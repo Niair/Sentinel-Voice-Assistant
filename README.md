@@ -1,161 +1,289 @@
-# Sentinel
-Build a modular personal AI voice assistant for daily automation and MCP server tasks.
-Keep it simple, iterative, and test-first so the AI IDE can scaffold code from this doc. 
+# GAIP
 
-## Project Description
-This AI Assistant should be able to:
-- Understand **voice commands** in Hindi + English (Hinglish) and text input
-- Respond with **text and voice**
-- Automate daily tasks like:
-  - Sending or replying to emails
-  - Writing emails on command
-  - Searching for product prices across multiple websites
-  - Providing weather updates for any location
-  - Booking flights or checking flight prices
-  - Integrating with MCP servers for multi-server tasks
-- Be **modular** so features can easily be added or updated (like AIOps systems)
-- Maintain **conversation context and memory**
-- Run on both **local system** and optionally on a web interface
+      git status
+      
+      git add .
+      
+      git commit -m "Day-
+      
+      git push -u origin main
 
-## Requirements
-- Python 3.11 backend (venv included or auto-created).
-- Flask for now (code modularized so swapping to FastAPI is trivial).
-- React (Vite) frontend with a minimal chat UI.
-- Gemini = primary LLM (via LangChain); Groq = fallback.
-- 11Labs for TTS; Whisper or Gemini STT for transcription.
-- LangChain + LangGraph for planning & orchestration; optional LangSmith for observability.
-- Vector memory: Qdrant / FAISS / Chroma (pluggable).
-- Docker + docker-compose for local dev & prod readiness.
-- GitHub Actions CI to run tests and run ci/plan_builder.py (creates ci/todo_list.json).
-- Tests: unit + integration tests for Gemini/Groq/11Labs connectivity.
-- Hinglish support (no separate translation service required initially; rely on multilingual LLMs + small preprocessing).
+# once
+pip install uv
 
-## Recommended Architecture & Technologies
-Even if I am not familiar with all of these, use the most appropriate for a professional AI assistant:
+# per project
+uv venv -p 3.11
+.venv\Scripts\activate
+uv pip install -r requirements.txt
 
-### 1. Frontend / Interface
-- **Primary options:** 
-  - React + Tailwind CSS (for advanced UI)
-  - HTML/CSS/JS (if web-based interface is required)
-- **Optional for later:** Streamlit (for Python-friendly GUI), Flask
-- Voice: Web Speech API + MediaRecorder
-- Features:
-  - Voice input capture
-  - Chat interface with AI responses
-  - Settings panel for API keys, server configs, and user preferences
-  - Optional dashboard for tasks and logs
+-----------------------------------------------------------------------------------
 
-### Backend / AI Engine
-- **Python** (primary language)
-- **AI Models & Tools:**
-  - Transformers (HuggingFace) for LLM responses
-  - LangChain / LangGraph for orchestration, reasoning, and memory
-- LLM:
-  - Primary: Google Gemini (gemini-api)
-  - Fallback: Groq (llama-3.1-70b, mixtral-8x7b)
-- Orchestration: LangChain + LangGraph
-- Voice:
-  - STT: OpenAI Whisper (local) or Google Speech-to-Text
-  - TTS: ElevenLabs API or Google Text-to-Speech
-- Vector DB: Qdrant or ChromaDB (for memory)
-- Database: SQLite (simple, file-based)
-- MCP: MCP Python SDK
+# Sentinel AI Assistant
 
-### 4. Utilities & Security
-- Load all credentials from `.env` using `python-dotenv`
-- Logging of errors and conversation history
-- Exception handling code for API calls and integrations
-- Input validation and sanitization
+A modern, responsive web application that provides an AI-powered chat interface using LangChain and LangGraph for intelligent conversation management.
 
-## .env.example
+## Features
+
+- **Modern Web Interface**: Built with HTML5, CSS3, and vanilla JavaScript
+- **AI Integration**: Powered by LangChain and LangGraph for intelligent conversations
+- **Multiple AI Models**: Support for Gemini and Groq AI models
+- **Responsive Design**: Mobile-first approach with clean, modern UI
+- **Real-time Chat**: Seamless conversation experience with typing indicators
+- **Conversation History**: Persistent chat history with clear functionality
+- **Rate Limiting**: Built-in API protection against abuse
+- **Comprehensive Testing**: Unit and integration tests included
+- **Security**: Input validation, CORS protection, and secure configuration
+
+## Quick Start
+
+### Prerequisites
+
+- Python 3.8+
+- Git
+
+### 1. Clone the Repository
+
+```bash
+git clone <repository-url>
+cd sentinel
+```
+
+### 2. Backend Setup
+
+```bash
+cd backend
+
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Configure environment
+cp .env.example .env
+# Edit .env with your API keys
+```
+
+### 3. Frontend Setup
+
+The frontend is ready to use as-is. For development:
+
+```bash
+cd frontend
+# Open index.html directly in browser
+# Or use a development server
+python -m http.server 3000  # Python 3
+```
+
+### 4. Run the Application
+
+#### Backend
+```bash
+cd backend
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+python app/main.py
+```
+
+#### Frontend
+Open `frontend/index.html` in your browser or use a local server:
+```bash
+cd frontend
+python -m http.server 3000
+```
+
+Visit `http://localhost:3000` to access the application.
+
+## Configuration
+
+### Environment Variables
+
+Create a `.env` file in the backend directory with the following variables:
+
+```env
+# Flask Configuration
 FLASK_ENV=development
-SECRET_KEY=changeme
-PORT=5000
+FLASK_DEBUG=True
+FLASK_PORT=5000
+FLASK_HOST=127.0.0.1
+SECRET_KEY=your-secret-key-here
 
-GEMINI_API_KEY=
-GROQ_API_KEY=
-ELEVENLABS_API_KEY=
-WHISPER_API_KEY=
-LANGSMITH_API_KEY=
+# AI API Keys (Required)
+GEMINI_API_KEY=your-gemini-api-key
+GROQ_API_KEY=your-groq-api-key
 
-VECTORDB_PROVIDER=qdrant   # or faiss/chroma
-VECTORDB_URL=
-S3_BUCKET=                  # optional for audio storage
+# Optional AI Services
+ELEVENLABS_API_KEY=your-elevenlabs-api-key
+OPENAI_API_KEY=your-openai-api-key
 
-### 5. Optional Tools & Enhancements
-- **Web scraping / API clients** for product search, flight booking, and weather
-- **Scheduler / Automation module** for recurring tasks
-- **Translation module** for Hinglish support
-- **Notification system** (desktop, email, or mobile)
+# Vector Database
+VECTORDB_PROVIDER=chromadb
+VECTORDB_URL=http://localhost:8000
 
-## Folder Structure Suggestion
+# Monitoring (Optional)
+LANGSMITH_API_KEY=your-langsmith-api-key
+LANGSMITH_PROJECT=sentinel-ai
+```
+
+### API Keys Setup
+
+1. **Google Gemini**: Get API key from [Google AI Studio](https://makersuite.google.com/app/apikey)
+2. **Groq**: Get API key from [Groq Console](https://console.groq.com/keys)
+3. **ElevenLabs** (Optional): Get API key from [ElevenLabs](https://elevenlabs.io/app/sound-effects)
+
+## API Documentation
+
+### Base URL
+```
+http://localhost:5000/api/v1
+```
+
+### Endpoints
+
+#### AI Chat
+- **POST** `/ai/chat` - Send a chat message
+- **GET** `/ai/models` - Get available AI models
+- **GET** `/ai/history` - Get conversation history
+- **POST** `/ai/clear-history` - Clear conversation history
+
+#### System
+- **GET** `/system/health` - Health check
+- **GET** `/system/status` - Detailed system status
+- **GET** `/system/config` - Configuration info
+
+### Example Request
+
+```bash
+curl -X POST http://localhost:5000/api/v1/ai/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "Hello, how are you?",
+    "model": "gemini"
+  }'
+```
+
+## Testing
+
+### Backend Tests
+
+```bash
+cd backend
+python run_tests.py
+```
+
+### Frontend Tests
+
+Manual testing in browser or use automated testing tools like Cypress.
+
+## Architecture
+
+```
 Sentinel/
-├── .github/workflows/ci.yml
-├── backend/
-│   ├── Dockerfile
-│   ├── requirements.txt
-│   └── app/
-│       ├── main.py
-│       ├── config.py
-│       ├── routes/
-│       │   ├── ai_routes.py
-│       │   └── system_routes.py
-│       ├── services/
-│       │   ├── task_manager.py
-│       │   └── audio_manager.py
-│       ├── integrations/
-│       │   ├── gemini_client.py
-│       │   ├── groq_client.py
-│       │   ├── tts_client.py
-│       │   └── stt_client.py
-│       ├── agents/
-│       │   └── plan_executor.py
-│       ├── memory/
-│       └── utils/
-│   └── tests/
-│       ├── test_ai_integrations.py
-│       ├── test_tts_service.py
-│       └── test_stt_service.py
-├── frontend/
-│   ├── Dockerfile
-│   ├── package.json
-│   └── src/
-│       ├── index.jsx
-│       ├── App.jsx
-│       ├── components/
-│       └── services/
-├── ci/
-│   ├── plan_builder.py
-│   ├── integration_checker.py
-│   └── todo_list.json     # generated
-├── docker-compose.yml
-├── .env.example
-└── README.md              # (this file)
+├── frontend/                 # Frontend application
+│   ├── index.html           # Main HTML structure
+│   ├── styles.css           # Modern CSS3 styling
+│   ├── app.js              # Vanilla JavaScript application
+│   ├── sw.js               # Service worker for offline support
+│   └── manifest.json        # PWA configuration
+├── backend/                 # Python backend application
+│   ├── app/                # Main application package
+│   │   ├── main.py         # Flask application factory
+│   │   ├── config.py       # Configuration management
+│   │   ├── routes/         # API route blueprints
+│   │   │   ├── ai_routes.py    # AI-related endpoints
+│   │   │   └── system_routes.py # System endpoints
+│   │   ├── services/       # Business logic services
+│   │   │   └── ai_service.py   # AI service with LangChain/LangGraph
+│   │   └── utils/          # Utility functions
+│   │       └── validators.py   # Input validation utilities
+│   ├── tests/              # Test suite
+│   │   └── test_backend.py # Backend tests
+│   ├── run_tests.py        # Test runner script
+│   └── requirements.txt    # Python dependencies
+└── .env.example            # Environment variables template
+```
 
-## Testing rules for the IDE
+## Development
 
-- Integration tests that call real APIs must be gated by CI secrets; if secrets missing, tests must pytest.skip.
-- Unit tests should use mocked LangChain models or LangChain’s GenericFakeChatModel pattern.
-- Health endpoint /system/integrations is used by ci/integration_checker.py before generation or code scaffolding.
+### Project Structure
 
-## Features to Include
-1. **Voice + Text input and output**
-2. **Email automation**
-3. **Web search and scraping for prices**
-4. **Flight booking & price comparison**
-5. **Weather updates**
-6. **MCP server integration**
-7. **Memory & context storage**
-8. **Hinglish language understanding**
-9. **Modular design for adding new tools**
-10. **Secure API key management**
+The application follows a modular architecture:
 
-## Agent instructions for the AI IDE (explicit tasks to run)
+- **Frontend**: Pure HTML5, CSS3, and JavaScript with PWA support
+- **Backend**: Flask application with LangChain/LangGraph integration
+- **AI Service**: Intelligent conversation management with workflow orchestration
+- **Security**: Input validation, rate limiting, and CORS protection
 
-- Read this README.md.
-- Generate ci/todo_list.json prioritizing integration & test tasks first.
-- Scaffold backend skeleton files (placeholders OK) and tests.
-- Scaffold frontend chat UI and an example flow calling POST /api/v1/chat.
-- Create ci/integration_checker.py that calls /api/v1/system/integrations and marks failing keys in todo_list.json.
-- Add GH Actions ci.yml with steps: setup Python 3.11, run integration_checker.py, run tests, run plan_builder.py, build Docker images.
-- Run tests locally (skip gated tests if keys missing) and report status.
+### Adding New Features
+
+1. **Backend**: Add new routes in `routes/` directory
+2. **Frontend**: Update `app.js` and `index.html`
+3. **Tests**: Add corresponding tests in `tests/` directory
+
+### Code Style
+
+- Follow PEP 8 for Python code
+- Use meaningful variable names
+- Add docstrings to functions and classes
+- Keep functions focused and modular
+
+## Deployment
+
+### Production Considerations
+
+1. **Security**: Use environment variables for sensitive data
+2. **Performance**: Enable caching and optimize assets
+3. **Monitoring**: Set up logging and health checks
+4. **Scaling**: Consider containerization with Docker
+
+### Docker Deployment (Future)
+
+```dockerfile
+# Example Dockerfile for backend
+FROM python:3.11-slim
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+COPY . .
+CMD ["python", "app/main.py"]
+```
+
+## Troubleshooting
+
+### Common Issues
+
+1. **API Key Errors**: Ensure all required API keys are set in `.env`
+2. **CORS Issues**: Check CORS configuration in Flask app
+3. **Rate Limiting**: Adjust limits in configuration if needed
+4. **Memory Issues**: Monitor system resources and adjust accordingly
+
+### Debug Mode
+
+Enable debug logging:
+```python
+import logging
+logging.basicConfig(level=logging.DEBUG)
+```
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests for new features
+5. Submit a pull request
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Support
+
+For issues and questions:
+1. Check the troubleshooting section
+2. Review existing issues
+3. Create a new issue with detailed information
+
+---
+
+**Built with ❤️ using modern web technologies and AI/ML frameworks**
