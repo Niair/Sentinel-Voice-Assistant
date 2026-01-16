@@ -1,0 +1,17 @@
+SECRET_KEY=
+PORT=
+
+GEMINI_API_KEY=""
+GROQ_API_KEY=""
+ELEVENLABS_API_KEY=""
+WHISPER_API_KEY=
+
+# ---- Langchain ----
+LANGCHAIN_TRACING_V2=true
+LANGCHAIN_ENDPOINT=''
+LANGCHAIN_API_KEY=''
+LANGCHAIN_PROJECT=''
+
+VECTORDB_PROVIDER=qdrant   # or faiss/chroma
+VECTORDB_URL=
+S3_BUCKET=                  # optional for audio storage

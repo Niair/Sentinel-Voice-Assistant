@@ -1,0 +1,18 @@
+[project]
+<<<<<<< HEAD
+name = "backend"
+=======
+name = "sentinel"
+>>>>>>> 0e665a57ed137584ecdb86e5e0ec014b03a8f2c0
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+<<<<<<< HEAD
+dependencies = [
+    "fastapi>=0.128.0",
+    "uvicorn>=0.40.0",
+]
+=======
+dependencies = []
+>>>>>>> 0e665a57ed137584ecdb86e5e0ec014b03a8f2c0
