@@ -1,6 +1,6 @@
 import os
 import asyncio
-from typing import TypedDict, Annotated
+from typing import TypedDict, Annotated, Optional
 from langchain_groq import ChatGroq
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_community.document_loaders import PyMuPDFLoader
@@ -21,49 +21,88 @@ load_dotenv()
 
 # --- Configuration ---
 DB_PATH = "sentinel_chatbot.db"
+# UPDATE THESE PATHS TO YOUR ACTUAL LOCAL PATHS
+MCP_PATH = "E:/_Projects/GAIP/MCP/chat_bot_with_mcp/local_mcp.py"
+
 SERVERS = {
     "math": {
         "transport": "stdio",
         "command": "uv",
-        "args": ["run", "fastmcp", "run", "E:/_Projects/GAIP/MCP/chat_bot_with_mcp/local_mcp.py"], # Use absolute path
-        "env": {
-            "PYTHONPATH": "E:/_Projects/GAIP/MCP/chat_bot_with_mcp" # Ensure imports work
-        }
+        "args": ["run", "fastmcp", "run", MCP_PATH],
+        "env": {"PYTHONPATH": os.path.dirname(MCP_PATH)}
     }
 }
 
-# --- State ---
+# --- Global RAG State ---
+# In a production app, you might store this in a more robust way
+_retriever = None
+_current_doc = None
+
+# --- State Definition ---
 class ChatState(TypedDict):
     messages: Annotated[list[BaseMessage], add_messages]
+
+# --- RAG Logic ---
+def process_document(pdf_path: str):
+    global _retriever, _current_doc
+    try:
+        loader = PyMuPDFLoader(pdf_path)
+        docs = loader.load()
+        splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+        chunks = splitter.split_documents(docs)
+        embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
+        vector_store = FAISS.from_documents(chunks, embeddings)
+        _retriever = vector_store.as_retriever(search_type='similarity', search_kwargs={'k': 4})
+        _current_doc = os.path.basename(pdf_path)
+        return {"success": True, "filename": _current_doc}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 # --- Tools ---
 search_tool = DuckDuckGoSearchRun(region="us-en")
 
 @tool
 def rag_tool(query: str) -> str:
-    """Retrieve information from uploaded documents."""
-    # This is a placeholder for the logic in your langgraph_rag_backend.py
-    # In production, you'd access the global retriever here
-    return "RAG search result for: " + query
+    """
+    Retrieve relevant information from the uploaded PDF document. 
+    Use this when the user asks questions about the content of their uploaded files.
+    """
+    global _retriever
+    if _retriever is None:
+        return "No document is currently loaded. Please upload a PDF first."
+    
+    try:
+        docs = _retriever.invoke(query)
+        context = "\n\n".join([doc.page_content for doc in docs])
+        return f"Context from document ({_current_doc}):\n\n{context}"
+    except Exception as e:
+        return f"Error retrieving from document: {str(e)}"
 
 # --- Graph Builder ---
 async def build_graph(checkpointer):
-    # Initialize MCP Client
     mcp_client = MultiServerMCPClient(SERVERS)
-    mcp_tools = await mcp_client.get_tools()
+    try:
+        mcp_tools = await mcp_client.get_tools()
+    except Exception as e:
+        print(f"Warning: Could not load MCP tools: {e}")
+        mcp_tools = []
+        
     all_tools = [search_tool, rag_tool] + list(mcp_tools)
 
+    # Using a high-capability model for better tool use
     model = ChatGroq(model="llama-3.3-70b-versatile", temperature=0.4)
     llm_with_tools = model.bind_tools(all_tools)
 
-    async def main_llm_function(state: ChatState):
-        response = await llm_with_tools.ainvoke(state['messages'])
+    async def agent(state: ChatState):
+        # Add a system message if it's the start of the conversation
+        messages = state['messages']
+        response = await llm_with_tools.ainvoke(messages)
         return {"messages": [response]}
 
     tool_node = ToolNode(all_tools)
 
     graph = StateGraph(ChatState)
-    graph.add_node("agent", main_llm_function)
+    graph.add_node("agent", agent)
     graph.add_node("tools", tool_node)
     graph.add_edge(START, "agent")
     graph.add_conditional_edges("agent", tools_condition)
@@ -71,7 +110,7 @@ async def build_graph(checkpointer):
 
     return graph.compile(checkpointer=checkpointer)
 
-# --- Singleton Pattern for API ---
+# --- Singleton ---
 _chatbot = None
 
 async def get_chatbot():
