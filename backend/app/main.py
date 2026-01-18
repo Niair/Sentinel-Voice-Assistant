@@ -1,12 +1,9 @@
-import os
 import json
-from typing import List, Dict, Any
 from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-
-# Import your existing LangGraph logic
-# Assuming you move your langgraph_rag_backend.py logic into graph.py
+from typing import List, Dict, Any
+from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
 from app.graph import get_chatbot
 
 app = FastAPI(title="Sentinel AI Backend")
@@ -14,28 +11,32 @@ app = FastAPI(title="Sentinel AI Backend")
 class Message(BaseModel):
     role: str
     content: str
+    id: str = None
 
 class ChatRequest(BaseModel):
     messages: List[Message]
-    thread_id: str = "default-thread"
+    id: str # Vercel Chat ID
+    user_id: str = "default_user"
 
-async def stream_langgraph_to_vercel(messages: List[Dict], thread_id: str):
-    """
-    Bridge LangGraph's stream to Vercel AI SDK's expected format.
-    Vercel AI SDK expects specific prefixes for different types of data.
-    """
-    chatbot = get_chatbot()
-    config = {"configurable": {"thread_id": thread_id}}
+async def stream_to_vercel(messages: List[Message], thread_id: str, user_id: str):
+    chatbot = await get_chatbot()
     
     # Convert Vercel messages to LangChain format
-    from langchain_core.messages import HumanMessage, AIMessage
     lc_messages = []
     for m in messages:
-        if m["role"] == "user":
-            lc_messages.append(HumanMessage(content=m["content"]))
-        else:
-            lc_messages.append(AIMessage(content=m["content"]))
+        if m.role == "user":
+            lc_messages.append(HumanMessage(content=m.content))
+        elif m.role == "assistant":
+            lc_messages.append(AIMessage(content=m.content))
 
+    config = {
+        "configurable": {
+            "thread_id": thread_id,
+            "user_id": user_id
+        }
+    }
+
+    # Use astream_events to capture everything (text + tools)
     async for event in chatbot.astream_events(
         {"messages": lc_messages}, 
         config, 
@@ -43,30 +44,33 @@ async def stream_langgraph_to_vercel(messages: List[Dict], thread_id: str):
     ):
         kind = event["event"]
         
-        # Handle text streaming
+        # 1. Stream Text (Vercel Prefix '0:')
         if kind == "on_chat_model_stream":
             content = event["data"]["chunk"].content
             if content:
-                # Vercel AI SDK 'text' prefix is '0:'
                 yield f"0:{json.dumps(content)}\n"
         
-        # Handle tool calls (for UI animations)
+        # 2. Stream Tool Calls (Vercel Prefix '9:')
         elif kind == "on_tool_start":
-            tool_name = event["name"]
-            # Vercel AI SDK 'tool_call' prefix is '9:'
-            yield f'9:{{"toolCallId":"{event["run_id"]}","toolName":"{tool_name}","args":{json.dumps(event["data"].get("input", {}))}}}\n'
+            payload = {
+                "toolCallId": event["run_id"],
+                "toolName": event["name"],
+                "args": event["data"].get("input", {})
+            }
+            yield f"9:{json.dumps(payload)}\n"
             
+        # 3. Stream Tool Results (Vercel Prefix 'a:')
         elif kind == "on_tool_end":
-            # Vercel AI SDK 'tool_result' prefix is 'a:'
-            yield f'a:{{"toolCallId":"{event["run_id"]}","result":{json.dumps(event["data"].get("output", "Success"))}}}\n'
+            payload = {
+                "toolCallId": event["run_id"],
+                "result": event["data"].get("output", "Success")
+            }
+            yield f"a:{json.dumps(payload)}\n"
 
 @app.post("/api/chat")
 async def chat(request: ChatRequest):
     return StreamingResponse(
-        stream_langgraph_to_vercel(
-            [m.dict() for m in request.messages], 
-            request.thread_id
-        ),
+        stream_to_vercel(request.messages, request.id, request.user_id),
         media_type="text/plain"
     )
 

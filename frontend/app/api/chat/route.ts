@@ -1,8 +1,3 @@
-import { streamText } from 'ai';
-// Note: In a real Vercel AI SDK setup, you might use 'fetch' directly 
-// if your backend already handles the protocol, or use the SDK's 
-// custom provider capabilities.
-
 export async function POST(req: Request) {
   const { messages, id } = await req.json();
 
@@ -12,7 +7,8 @@ export async function POST(req: Request) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ 
       messages,
-      thread_id: id // Use the Vercel chat ID as the LangGraph thread_id
+      id: id, // Vercel Chat ID as thread_id
+      user_id: 'u1' // Hardcoded for now, can be dynamic later
     }),
   });
 

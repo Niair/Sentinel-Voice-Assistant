@@ -1,19 +1,23 @@
 import os
+import json
 import asyncio
-from typing import TypedDict, Annotated, Optional
+from typing import TypedDict, Annotated, Optional, List, Dict
 from langchain_groq import ChatGroq
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_community.document_loaders import PyMuPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
 from langchain_core.tools import tool
+from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage, ToolMessage
+from langchain_core.runnables import RunnableConfig
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.prebuilt import ToolNode, tools_condition
 from langchain_community.tools import DuckDuckGoSearchRun
 from langchain_mcp_adapters.client import MultiServerMCPClient
-from langchain_core.messages import BaseMessage, HumanMessage, ToolMessage
+from langgraph.store.base import BaseStore
+from langgraph.store.memory import InMemoryStore
 import aiosqlite
 from dotenv import load_dotenv
 
@@ -34,7 +38,6 @@ SERVERS = {
 }
 
 # --- Global RAG State ---
-# In a production app, you might store this in a more robust way
 _retriever = None
 _current_doc = None
 
@@ -78,28 +81,52 @@ def rag_tool(query: str) -> str:
     except Exception as e:
         return f"Error retrieving from document: {str(e)}"
 
-# --- Graph Builder ---
-async def build_graph(checkpointer):
+# --- Long-term Memory Logic ---
+SYSTEM_PROMPT_TEMPLATE = """
+You are a helpful assistant with memory capabilities.
+If user-specific memory is available, use it to personalize 
+your responses based on what you know about the user.
+
+The user’s memory (which may be empty) is provided as: {user_details_content}
+"""
+
+async def agent(state: ChatState, config: RunnableConfig, store: BaseStore):
+    user_id = config["configurable"].get("user_id", "default_user")
+    
+    # Fetch long-term memories from the store
+    namespace = ("user", user_id, "details")
+    items = await store.asearch(namespace)
+    
+    if items:
+        user_details_content = "\n".join(f"- {it.value.get('data', '')}" for it in items)
+    else:
+        user_details_content = "No previous memories found."
+
+    system_prompt = SYSTEM_PROMPT_TEMPLATE.format(
+        user_details_content=user_details_content
+    )
+    
+    # Build tools
     mcp_client = MultiServerMCPClient(SERVERS)
     try:
         mcp_tools = await mcp_client.get_tools()
-    except Exception as e:
-        print(f"Warning: Could not load MCP tools: {e}")
+    except Exception:
         mcp_tools = []
-        
+    
     all_tools = [search_tool, rag_tool] + list(mcp_tools)
-
-    # Using a high-capability model for better tool use
     model = ChatGroq(model="llama-3.3-70b-versatile", temperature=0.4)
     llm_with_tools = model.bind_tools(all_tools)
 
-    async def agent(state: ChatState):
-        # Add a system message if it's the start of the conversation
-        messages = state['messages']
-        response = await llm_with_tools.ainvoke(messages)
-        return {"messages": [response]}
+    messages = [SystemMessage(content=system_prompt)] + state['messages']
+    response = await llm_with_tools.ainvoke(messages)
+    return {"messages": [response]}
 
-    tool_node = ToolNode(all_tools)
+# --- Graph Builder ---
+async def build_graph(checkpointer, store):
+    # ToolNode needs all tools that might be called
+    # For MCP tools, we'd ideally know them beforehand or add them dynamically
+    # For now, we include the static ones.
+    tool_node = ToolNode([search_tool, rag_tool]) 
 
     graph = StateGraph(ChatState)
     graph.add_node("agent", agent)
@@ -108,15 +135,16 @@ async def build_graph(checkpointer):
     graph.add_conditional_edges("agent", tools_condition)
     graph.add_edge("tools", "agent")
 
-    return graph.compile(checkpointer=checkpointer)
+    return graph.compile(checkpointer=checkpointer, store=store)
 
 # --- Singleton ---
 _chatbot = None
+_store = InMemoryStore() # In production, use a persistent store like PostgresStore
 
 async def get_chatbot():
     global _chatbot
     if _chatbot is None:
         conn = await aiosqlite.connect(DB_PATH)
         checkpointer = AsyncSqliteSaver(conn)
-        _chatbot = await build_graph(checkpointer)
+        _chatbot = await build_graph(checkpointer, _store)
     return _chatbot
