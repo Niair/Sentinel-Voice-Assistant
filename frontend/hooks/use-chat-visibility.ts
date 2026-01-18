@@ -1,13 +1,20 @@
-import { create } from "zustand";
+"use client";
 
-export type VisibilityType = "public" | "private";
+import { useState } from "react";
 
-interface ChatVisibilityStore {
-  chatVisibility: VisibilityType;
-  setChatVisibility: (visibility: VisibilityType) => void;
+export function useChatVisibility({
+  chatId,
+  initialVisibilityType,
+}: {
+  chatId: string;
+  initialVisibilityType: "public" | "private";
+}) {
+  const [visibilityType, setVisibilityType] = useState<"public" | "private">(
+    initialVisibilityType
+  );
+
+  return {
+    visibilityType,
+    setVisibilityType,
+  };
 }
-
-export const useChatVisibility = create<ChatVisibilityStore>((set) => ({
-  chatVisibility: "private",
-  setChatVisibility: (visibility) => set({ chatVisibility: visibility }),
-}));

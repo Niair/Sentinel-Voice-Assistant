@@ -1,6 +1,6 @@
 "use client";
 import type { UseChatHelpers } from "@ai-sdk/react";
-import cx from "classnames";
+import { cn } from "@/lib/utils";
 import {
   AnimatePresence,
   motion,
@@ -89,7 +89,7 @@ const Tool = ({
       <TooltipTrigger asChild>
         <motion.div
           animate={{ opacity: 1, transition: { delay: 0.1 } }}
-          className={cx("rounded-full p-3", {
+          className={cn("rounded-full p-3", {
             "bg-primary text-primary-foreground!": selectedTool === description,
           })}
           exit={{
@@ -187,7 +187,7 @@ const ReadingLevelSelector = ({
         <Tooltip open={!isAnimating}>
           <TooltipTrigger asChild>
             <motion.div
-              className={cx(
+              className={cn(
                 "absolute flex flex-row items-center rounded-full border bg-background p-3",
                 {
                   "bg-primary text-primary-foreground": currentLevel !== 2,
@@ -381,19 +381,19 @@ const PureToolbar = ({
           isToolbarVisible
             ? selectedTool === "adjust-reading-level"
               ? {
-                  opacity: 1,
-                  y: 0,
-                  height: 6 * 43,
-                  transition: { delay: 0 },
-                  scale: 0.95,
-                }
+                opacity: 1,
+                y: 0,
+                height: 6 * 43,
+                transition: { delay: 0 },
+                scale: 0.95,
+              }
               : {
-                  opacity: 1,
-                  y: 0,
-                  height: toolsByArtifactKind.length * 50,
-                  transition: { delay: 0 },
-                  scale: 1,
-                }
+                opacity: 1,
+                y: 0,
+                height: toolsByArtifactKind.length * 50,
+                transition: { delay: 0 },
+                scale: 1,
+              }
             : { opacity: 1, y: 0, height: 54, transition: { delay: 0 } }
         }
         className="absolute right-6 bottom-6 flex cursor-pointer flex-col justify-end rounded-full border bg-background p-1.5 shadow-lg"
