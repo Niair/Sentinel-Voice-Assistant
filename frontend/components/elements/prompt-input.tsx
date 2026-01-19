@@ -1,6 +1,7 @@
 "use client";
 
-import type { ChatStatus } from "ai";
+// Local type for chat status to avoid dependency issues with varying AI SDK versions
+export type ChatStatus = "idle" | "submitted" | "streaming" | "error" | "ready";
 import { Loader2Icon, SendIcon, SquareIcon, XIcon } from "lucide-react";
 import type {
   ComponentProps,
@@ -24,7 +25,7 @@ export type PromptInputProps = HTMLAttributes<HTMLFormElement>;
 export const PromptInput = ({ className, ...props }: PromptInputProps) => (
   <form
     className={cn(
-      "w-full overflow-hidden rounded-xl border bg-background shadow-xs",
+      "w-full overflow-hidden rounded-2xl border border-border bg-background/80 backdrop-blur-xl shadow-lg ring-1 ring-primary/5 transition-all duration-300 focus-within:ring-primary/20 focus-within:border-primary/30",
       className
     )}
     {...props}

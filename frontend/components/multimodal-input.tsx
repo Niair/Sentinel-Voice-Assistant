@@ -1,7 +1,7 @@
 "use client";
 
 import type { UseChatHelpers } from "@ai-sdk/react";
-import type { UIMessage } from "ai";
+import type { Message } from "ai";
 import equal from "fast-deep-equal";
 import { CheckIcon } from "lucide-react";
 import {
@@ -76,7 +76,7 @@ function PureMultimodalInput({
   stop: () => void;
   attachments: Attachment[];
   setAttachments: Dispatch<SetStateAction<Attachment[]>>;
-  messages: UIMessage[];
+  messages: Message[];
   setMessages: UseChatHelpers<ChatMessage>["setMessages"];
   sendMessage: UseChatHelpers<ChatMessage>["sendMessage"];
   className?: string;
@@ -317,7 +317,7 @@ function PureMultimodalInput({
       />
 
       <PromptInput
-        className="rounded-xl border border-border bg-background p-3 shadow-xs transition-all duration-200 focus-within:border-border hover:border-muted-foreground/50"
+        className="rounded-2xl border-border/50 bg-background/50 p-2 shadow-2xl backdrop-blur-2xl transition-all duration-300 focus-within:bg-background/80 hover:border-primary/30"
         onSubmit={(event) => {
           event.preventDefault();
           if (!input.trim() && attachments.length === 0) {
@@ -365,13 +365,13 @@ function PureMultimodalInput({
         )}
         <div className="flex flex-row items-start gap-1 sm:gap-2">
           <PromptInputTextarea
-            className="grow resize-none border-0! border-none! bg-transparent p-2 text-base outline-none ring-0 [-ms-overflow-style:none] [scrollbar-width:none] placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 [&::-webkit-scrollbar]:hidden"
+            className="grow resize-none border-0! border-none! bg-transparent px-3 py-3 text-base outline-none ring-0 placeholder:text-muted-foreground/50 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 [&::-webkit-scrollbar]:hidden"
             data-testid="multimodal-input"
             disableAutoResize={true}
             maxHeight={200}
             minHeight={44}
             onChange={handleInput}
-            placeholder="Send a message..."
+            placeholder="How can Sentinel help you today?"
             ref={textareaRef}
             rows={1}
             value={input}
@@ -390,16 +390,16 @@ function PureMultimodalInput({
             />
           </PromptInputTools>
 
-          {status === "submitted" ? (
+          {status === "submitted" || status === "streaming" ? (
             <StopButton setMessages={setMessages} stop={stop} />
           ) : (
             <PromptInputSubmit
-              className="size-8 rounded-full bg-primary text-primary-foreground transition-colors duration-200 hover:bg-primary/90 disabled:bg-muted disabled:text-muted-foreground"
+              className="group size-9 rounded-xl bg-primary text-primary-foreground shadow-[0_0_15px_-3px_var(--color-primary)] transition-all duration-300 hover:scale-105 active:scale-95 disabled:bg-muted disabled:text-muted-foreground disabled:shadow-none"
               data-testid="send-button"
               disabled={!input.trim() || uploadQueue.length > 0}
               status={status}
             >
-              <ArrowUpIcon size={14} />
+              <ArrowUpIcon className="size-4 transition-transform group-hover:-translate-y-0.5" />
             </PromptInputSubmit>
           )}
         </PromptInputToolbar>

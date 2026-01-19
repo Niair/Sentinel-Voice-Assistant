@@ -65,7 +65,7 @@ const PurePreviewMessage = ({
         })}
       >
         {message.role === "assistant" && (
-          <div className="-mt-1 flex size-8 shrink-0 items-center justify-center rounded-full bg-background ring-1 ring-border">
+          <div className="-mt-1 flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary ring-1 ring-primary/20 shadow-[0_0_15px_-5px_var(--color-primary)]">
             <SparklesIcon size={14} />
           </div>
         )}
@@ -127,18 +127,13 @@ const PurePreviewMessage = ({
                 return (
                   <div key={key}>
                     <MessageContent
-                      className={cn({
-                        "wrap-break-word w-fit rounded-2xl px-3 py-2 text-right text-white":
+                      className={cn("w-fit px-4 py-2.5 shadow-sm transition-all", {
+                        "rounded-2xl rounded-tr-none bg-primary text-primary-foreground shadow-primary/20":
                           message.role === "user",
                         "bg-transparent px-0 py-0 text-left":
                           message.role === "assistant",
                       })}
                       data-testid="message-content"
-                      style={
-                        message.role === "user"
-                          ? { backgroundColor: "#006cff" }
-                          : undefined
-                      }
                     >
                       <Response>{sanitizeText(part.text)}</Response>
                     </MessageContent>
@@ -224,8 +219,8 @@ const PurePreviewMessage = ({
                     <ToolContent>
                       {(state === "input-available" ||
                         state === "approval-requested") && (
-                        <ToolInput input={part.input} />
-                      )}
+                          <ToolInput input={part.input} />
+                        )}
                       {state === "approval-requested" && approvalId && (
                         <div className="flex items-center justify-end gap-2 border-t px-4 py-3">
                           <button
@@ -366,21 +361,21 @@ export const PreviewMessage = PurePreviewMessage;
 export const ThinkingMessage = () => {
   return (
     <div
-      className="group/message fade-in w-full animate-in duration-300"
+      className="group/message fade-in w-full animate-in slide-in-from-bottom-2 duration-500"
       data-role="assistant"
       data-testid="message-assistant-loading"
     >
       <div className="flex items-start justify-start gap-3">
-        <div className="-mt-1 flex size-8 shrink-0 items-center justify-center rounded-full bg-background ring-1 ring-border">
+        <div className="-mt-1 flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/5 text-primary/50 ring-1 ring-primary/10">
           <div className="animate-pulse">
             <SparklesIcon size={14} />
           </div>
         </div>
 
         <div className="flex w-full flex-col gap-2 md:gap-4">
-          <div className="flex items-center gap-1 p-0 text-muted-foreground text-sm">
-            <span className="animate-pulse">Thinking</span>
-            <span className="inline-flex">
+          <div className="flex items-center gap-2 p-0 text-muted-foreground/60 text-sm font-medium italic">
+            <span className="animate-pulse">Sentinel is processing</span>
+            <span className="flex gap-0.5">
               <span className="animate-bounce [animation-delay:0ms]">.</span>
               <span className="animate-bounce [animation-delay:150ms]">.</span>
               <span className="animate-bounce [animation-delay:300ms]">.</span>

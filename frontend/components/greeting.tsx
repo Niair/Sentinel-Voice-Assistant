@@ -8,21 +8,17 @@ export const Greeting = () => {
     >
       <motion.div
         animate={{ opacity: 1, y: 0 }}
-        className="font-semibold text-xl md:text-2xl"
-        exit={{ opacity: 0, y: 10 }}
-        initial={{ opacity: 0, y: 10 }}
-        transition={{ delay: 0.5 }}
+        className="flex flex-col gap-2"
+        exit={{ opacity: 0, scale: 0.95 }}
+        initial={{ opacity: 0, y: 20 }}
+        transition={{ delay: 0.2, type: "spring", stiffness: 100 }}
       >
-        Hello there!
-      </motion.div>
-      <motion.div
-        animate={{ opacity: 1, y: 0 }}
-        className="text-xl text-zinc-500 md:text-2xl"
-        exit={{ opacity: 0, y: 10 }}
-        initial={{ opacity: 0, y: 10 }}
-        transition={{ delay: 0.6 }}
-      >
-        How can I help you today?
+        <h1 className="text-4xl md:text-6xl font-bold tracking-tight bg-gradient-to-br from-foreground to-foreground/50 bg-clip-text text-transparent">
+          I'm Sentinel.
+        </h1>
+        <p className="text-2xl md:text-3xl font-medium text-muted-foreground/80 tracking-tight">
+          How can I assist your workflow today?
+        </p>
       </motion.div>
     </div>
   );

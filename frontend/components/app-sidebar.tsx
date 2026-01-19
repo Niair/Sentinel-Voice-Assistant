@@ -65,14 +65,17 @@ export function AppSidebar({ user }: { user: User | undefined }) {
           <SidebarMenu>
             <div className="flex flex-row items-center justify-between">
               <Link
-                className="flex flex-row items-center gap-3"
+                className="flex flex-row items-center gap-2 group"
                 href="/"
                 onClick={() => {
                   setOpenMobile(false);
                 }}
               >
-                <span className="cursor-pointer rounded-md px-2 font-semibold text-lg hover:bg-muted">
-                  Chatbot
+                <div className="flex size-7 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-lg shadow-primary/20 transition-transform group-hover:scale-105">
+                  <span className="font-bold text-xs">S</span>
+                </div>
+                <span className="cursor-pointer font-bold text-lg tracking-tight hover:text-primary transition-colors">
+                  Sentinel
                 </span>
               </Link>
               <div className="flex flex-row gap-1">
