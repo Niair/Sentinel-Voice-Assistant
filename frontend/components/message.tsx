@@ -58,6 +58,7 @@ const PurePreviewMessage = ({
       data-role={message.role}
       data-testid={`message-${message.role}`}
     >
+      {/* Debug: {console.log('Rendering Message:', message.id, 'Role:', message.role, 'Parts:', message.parts?.length, 'Content:', message.content?.slice(0, 20))} */}
       <div
         className={cn("flex w-full items-start gap-2 md:gap-3", {
           "justify-end": message.role === "user" && mode !== "edit",
@@ -104,6 +105,21 @@ const PurePreviewMessage = ({
             </div>
           )}
 
+          {(!message.parts || message.parts.length === 0) && message.content && (
+            <div key="content-fallback">
+              <MessageContent
+                className={cn("w-fit px-4 py-2.5 shadow-sm transition-all", {
+                  "rounded-2xl rounded-tr-none bg-primary text-primary-foreground shadow-primary/20":
+                    message.role === "user",
+                  "rounded-2xl rounded-tl-none bg-secondary text-foreground shadow-sm":
+                    message.role === "assistant",
+                })}
+              >
+                <Response>{sanitizeText(message.content)}</Response>
+              </MessageContent>
+            </div>
+          )}
+
           {message.parts?.map((part, index) => {
             const { type } = part;
             const key = `message-${message.id}-part-${index}`;
@@ -130,7 +146,7 @@ const PurePreviewMessage = ({
                       className={cn("w-fit px-4 py-2.5 shadow-sm transition-all", {
                         "rounded-2xl rounded-tr-none bg-primary text-primary-foreground shadow-primary/20":
                           message.role === "user",
-                        "bg-transparent px-0 py-0 text-left":
+                        "rounded-2xl rounded-tl-none bg-secondary text-foreground shadow-sm":
                           message.role === "assistant",
                       })}
                       data-testid="message-content"

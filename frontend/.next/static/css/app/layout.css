@@ -1774,6 +1774,9 @@
     border-top-left-radius: var(--radius-md);
     border-top-right-radius: var(--radius-md);
   }
+  .rounded-tl-none {
+    border-top-left-radius: 0;
+  }
   .rounded-tr-none {
     border-top-right-radius: 0;
   }

@@ -107,6 +107,7 @@ export function Chat({
       selectedChatModel: currentModelId,
       selectedVisibilityType: visibilityType,
     },
+    streamProtocol: "data",
     onData: (dataPart) => {
       setDataStream((ds) => (ds ? [...ds, dataPart] : []));
     },
@@ -128,6 +129,14 @@ export function Chat({
       }
     },
   });
+
+  useEffect(() => {
+    console.log('Chat Status:', status);
+    if (messages.length > 0) {
+      console.log('Last Message Content:', messages[messages.length - 1].content);
+      console.log('Last Message Parts:', messages[messages.length - 1].parts);
+    }
+  }, [status, messages]);
 
   const searchParams = useSearchParams();
   const query = searchParams.get("query");
