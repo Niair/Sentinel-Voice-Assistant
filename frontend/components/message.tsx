@@ -52,13 +52,19 @@ const PurePreviewMessage = ({
 
   useDataStream();
 
+  if (process.env.NODE_ENV === 'development') {
+    console.log('Rendering Message:', message.id, 'Role:', message.role, 'Parts:', message.parts?.length);
+  }
+
   return (
     <div
-      className="group/message fade-in w-full animate-in duration-200"
+      className={cn(
+        "group/message fade-in w-full animate-in duration-200",
+        message.role === "user" ? "is-user group" : "is-assistant group"
+      )}
       data-role={message.role}
       data-testid={`message-${message.role}`}
     >
-      {/* Debug: {console.log('Rendering Message:', message.id, 'Role:', message.role, 'Parts:', message.parts?.length, 'Content:', message.content?.slice(0, 20))} */}
       <div
         className={cn("flex w-full items-start gap-2 md:gap-3", {
           "justify-end": message.role === "user" && mode !== "edit",
@@ -111,11 +117,11 @@ const PurePreviewMessage = ({
                 className={cn("w-fit px-4 py-2.5 shadow-sm transition-all", {
                   "rounded-2xl rounded-tr-none bg-primary text-primary-foreground shadow-primary/20":
                     message.role === "user",
-                  "rounded-2xl rounded-tl-none bg-secondary text-foreground shadow-sm":
+                  "rounded-2xl rounded-tl-none bg-secondary text-foreground shadow-sm visible opacity-100":
                     message.role === "assistant",
                 })}
               >
-                <Response>{sanitizeText(message.content)}</Response>
+                <div className="prose dark:prose-invert whitespace-pre-wrap">{sanitizeText(message.content)}</div>
               </MessageContent>
             </div>
           )}
@@ -123,6 +129,10 @@ const PurePreviewMessage = ({
           {message.parts?.map((part, index) => {
             const { type } = part;
             const key = `message-${message.id}-part-${index}`;
+
+            if (process.env.NODE_ENV === 'development') {
+              console.log(`Part ${index} for ${message.id}:`, { type, keys: Object.keys(part), text: (part as any).text?.slice(0, 20) });
+            }
 
             if (type === "reasoning") {
               const hasContent = part.text?.trim().length > 0;
@@ -138,7 +148,8 @@ const PurePreviewMessage = ({
               }
             }
 
-            if (type === "text") {
+            if (type === "text" || (part as any).text) {
+              const text = (part as any).text || "";
               if (mode === "view") {
                 return (
                   <div key={key}>
@@ -146,12 +157,12 @@ const PurePreviewMessage = ({
                       className={cn("w-fit px-4 py-2.5 shadow-sm transition-all", {
                         "rounded-2xl rounded-tr-none bg-primary text-primary-foreground shadow-primary/20":
                           message.role === "user",
-                        "rounded-2xl rounded-tl-none bg-secondary text-foreground shadow-sm":
+                        "rounded-2xl rounded-tl-none bg-secondary text-foreground shadow-sm visible opacity-100 border-2 border-primary":
                           message.role === "assistant",
                       })}
                       data-testid="message-content"
                     >
-                      <Response>{sanitizeText(part.text)}</Response>
+                      <div className="prose dark:prose-invert whitespace-pre-wrap font-sans">{sanitizeText(text)}</div>
                     </MessageContent>
                   </div>
                 );
@@ -350,6 +361,15 @@ const PurePreviewMessage = ({
                     )}
                   </ToolContent>
                 </Tool>
+              );
+            }
+
+            if (process.env.NODE_ENV === 'development') {
+              return (
+                <div className="rounded border border-dashed border-red-500/30 p-2 text-[10px] text-muted-foreground" key={key}>
+                  Unknown part type: {type}. Full keys: {Object.keys(part).join(', ')}
+                  <pre>{JSON.stringify(part, null, 2)}</pre>
+                </div>
               );
             }
 

@@ -20,6 +20,7 @@ export function DataStreamHandler() {
     }
 
     const newDeltas = dataStream.slice();
+    console.log('DataStreamHandler received deltas:', newDeltas);
     setDataStream([]);
 
     for (const delta of newDeltas) {

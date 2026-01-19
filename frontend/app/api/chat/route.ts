@@ -1,4 +1,4 @@
-import { getChatById, saveChat, saveMessages } from '@/lib/db/queries';
+import { getChatById, saveChat, saveMessages, ensureGuestUserExists } from '@/lib/db/queries';
 import { generateUUID, getTextFromMessage } from '@/lib/utils';
 import { Message } from 'ai';
 
@@ -6,9 +6,11 @@ export async function POST(req: Request) {
   const { messages, id }: { messages: Array<Message>, id: string } = await req.json();
   const userId = '00000000-0000-0000-0000-000000000000'; // Our Guest User
 
-  // 1. If this is a new chat, save it to the DB so it doesn't 404 on reload
-  // 1. If this is a new chat, save it to the DB so it doesn't 404 on reload
+  // 1. Ensure the Guest User exists and save the chat
   try {
+    // This is a self-healing check to make sure our hardcoded guest user exists
+    await ensureGuestUserExists(userId);
+
     const chatExists = await getChatById({ id });
     if (!chatExists && messages.length > 0) {
       const firstMessage = messages[0];
@@ -36,7 +38,8 @@ export async function POST(req: Request) {
       console.log('Chat and first message saved successfully');
     }
   } catch (error) {
-    console.error('DATABASE ERROR in /api/chat:', error);
+    console.error('DATABASE ERROR in /api/chat (persistence check):', error);
+    // Continue even if DB fails, so the user can at least chat in-memory
   }
 
   // This calls your FastAPI backend running on port 8000
@@ -59,42 +62,9 @@ export async function POST(req: Request) {
     return new Response('No response body from AI backend', { status: 500 });
   }
 
-  console.log('AI Backend connection successful, starting to pipe stream for ID:', id);
+  console.log('Got successful response from AI backend, piping stream for ID:', id);
 
-  const reader = response.body.getReader();
-  const encoder = new TextEncoder();
-  const decoder = new TextDecoder();
-
-  const stream = new ReadableStream({
-    async start(controller) {
-      console.log('Stream controller started');
-      let chunkCount = 0;
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) {
-            console.log('AI Backend stream finished. Total chunks:', chunkCount);
-            break;
-          }
-          chunkCount++;
-          const text = decoder.decode(value);
-          // Optional: log first few chunks
-          if (chunkCount <= 5) {
-            console.log(`Chunk ${chunkCount}:`, text.slice(0, 50));
-          }
-          controller.enqueue(value);
-        }
-      } catch (error) {
-        console.error('Error reading from AI backend stream:', error);
-        controller.error(error);
-      } finally {
-        controller.close();
-        console.log('Stream controller closed');
-      }
-    },
-  });
-
-  return new Response(stream, {
+  return new Response(response.body, {
     headers: {
       'Content-Type': 'text/plain; charset=utf-8',
       'Cache-Control': 'no-cache, no-transform',

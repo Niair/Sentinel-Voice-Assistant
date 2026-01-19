@@ -17,6 +17,11 @@
       "static/chunks/main-app.js",
       "static/css/app/(chat)/chat/[id]/page.css",
       "static/chunks/app/(chat)/chat/[id]/page.js"
+    ],
+    "/not-found": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/not-found.js"
     ]
   }
 }
