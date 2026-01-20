@@ -1,0 +1,12 @@
+﻿{
+    "user_id":  "debug-user",
+    "model":  "llama-3.3-70b-versatile",
+    "id":  "debug-thread",
+    "messages":  [
+                     {
+                         "content":  "hello",
+                         "id":  "m1",
+                         "role":  "user"
+                     }
+                 ]
+}

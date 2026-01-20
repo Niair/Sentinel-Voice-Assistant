@@ -89,7 +89,8 @@ function PureMultimodalInput({
 
   const adjustHeight = useCallback(() => {
     if (textareaRef.current) {
-      textareaRef.current.style.height = "44px";
+      textareaRef.current.style.height = "auto";
+      textareaRef.current.style.height = `${textareaRef.current.scrollHeight + 2}px`;
     }
   }, []);
 
@@ -97,7 +98,7 @@ function PureMultimodalInput({
     if (textareaRef.current) {
       adjustHeight();
     }
-  }, [adjustHeight]);
+  }, [adjustHeight, input]);
 
   const hasAutoFocused = useRef(false);
   useEffect(() => {
@@ -114,7 +115,7 @@ function PureMultimodalInput({
     if (textareaRef.current) {
       textareaRef.current.style.height = "44px";
     }
-  }, []);
+  }, [chatId]);
 
   const [localStorageInput, setLocalStorageInput] = useLocalStorage(
     "input",
@@ -188,7 +189,7 @@ function PureMultimodalInput({
     formData.append("file", file);
 
     try {
-      const response = await fetch("/api/files/upload", {
+      const response = await fetch(`/api/files/upload?thread_id=${encodeURIComponent(chatId)}`, {
         method: "POST",
         body: formData,
       });

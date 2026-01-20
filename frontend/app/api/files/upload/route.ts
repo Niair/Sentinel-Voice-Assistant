@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 
 export async function POST(request: Request) {
   try {
+    const url = new URL(request.url);
+    const threadId = url.searchParams.get('thread_id') || 'default_thread';
     const formData = await request.formData();
     const file = formData.get('file') as File;
 
@@ -13,7 +15,7 @@ export async function POST(request: Request) {
     const backendFormData = new FormData();
     backendFormData.append('file', file);
 
-    const response = await fetch('http://localhost:8000/api/process-document', {
+    const response = await fetch(`http://localhost:8000/api/process-document?thread_id=${encodeURIComponent(threadId)}`, {
       method: 'POST',
       body: backendFormData,
     });

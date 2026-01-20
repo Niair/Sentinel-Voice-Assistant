@@ -12,6 +12,5 @@ LANGCHAIN_ENDPOINT=''
 LANGCHAIN_API_KEY=''
 LANGCHAIN_PROJECT=''
 
-VECTORDB_PROVIDER=qdrant   # or faiss/chroma
-VECTORDB_URL=
+POSTGRES_URL=postgresql+asyncpg://postgres:postgres@localhost:5442/postgres
 S3_BUCKET=                  # optional for audio storage

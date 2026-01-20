@@ -64,8 +64,16 @@ langchain-experimental
 # LangGraph Specific Requirements
 # ---------------------------------------------------------
 langgraph
-langgraph-checkpoint-sqlite
+langgraph-checkpoint-postgres
 langchain-mcp-adapters
+
+# Postgres drivers
+psycopg[binary]
+asyncpg
+
+# Postgres + pgvector
+langchain-postgres
+pgvector
 
 # ---------------------------------------------------------
 # LangSmith Specific Requirements
@@ -110,7 +118,6 @@ langchain-openai==0.3.29
 langchain-text-splitters==0.3.9
 langgraph==0.6.4
 langgraph-checkpoint==2.1.1
-langgraph-checkpoint-sqlite==2.0.11
 langgraph-prebuilt==0.6.4
 langgraph-sdk==0.2.0
 langsmith==0.4.13

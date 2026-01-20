@@ -44,8 +44,25 @@ async function collectAssistantData(stream: ReadableStream<Uint8Array>) {
         const parsed = JSON.parse(payload);
         if (typeof parsed === 'string') {
           text += parsed;
-        } else if (parsed?.content && typeof parsed.content === 'string') {
-          text += parsed.content;
+        } else if (parsed && typeof parsed === 'object') {
+          if (typeof (parsed as any).content === 'string') {
+            text += (parsed as any).content;
+          } else if (Array.isArray((parsed as any).content)) {
+            for (const part of (parsed as any).content) {
+              if (typeof part === 'string') {
+                text += part;
+              } else if (part && typeof part === 'object' && part.type === 'text' && typeof part.text === 'string') {
+                text += part.text;
+              }
+            }
+          } else if (Array.isArray(parsed)) {
+            for (const part of parsed as any[]) {
+              if (typeof part === 'string') text += part;
+              else if (part && typeof part === 'object' && part.type === 'text' && typeof part.text === 'string') {
+                text += part.text;
+              }
+            }
+          }
         }
       } catch {
         text += payload.replace(/^"|"$/g, '');
@@ -85,7 +102,7 @@ async function collectAssistantData(stream: ReadableStream<Uint8Array>) {
 }
 
 export async function POST(req: Request) {
-  const { messages, id }: { messages: Array<Message>, id: string } = await req.json();
+  const { messages, id, selectedChatModel }: { messages: Array<Message>, id: string, selectedChatModel?: string } = await req.json();
   const userId = '00000000-0000-0000-0000-000000000000'; // Our Guest User
 
   // 1. Ensure the Guest User exists and save the chat
@@ -109,11 +126,12 @@ export async function POST(req: Request) {
 
       await saveMessageIfMissing(firstMessage, id);
       console.log('Chat and first message saved successfully');
-    }
-
-    const latestUserMessage = [...messages].reverse().find((message) => message.role === 'user');
-    if (latestUserMessage) {
-      await saveMessageIfMissing(latestUserMessage, id);
+    } else {
+      // If chat already exists, we only save the LATEST user message (if not already there)
+      const latestUserMessage = [...messages].reverse().find((message) => message.role === 'user');
+      if (latestUserMessage) {
+        await saveMessageIfMissing(latestUserMessage, id);
+      }
     }
   } catch (error) {
     console.error('DATABASE ERROR in /api/chat (persistence check):', error);
@@ -130,13 +148,15 @@ export async function POST(req: Request) {
         id: m.id
       })),
       id: id,
-      user_id: userId
+      user_id: userId,
+      model: selectedChatModel
     }),
   });
 
-  if (!response.body) {
-    console.error('AI Backend returned no body');
-    return new Response('No response body from AI backend', { status: 500 });
+  if (!response.ok || !response.body) {
+    const errorText = await response.text().catch(() => 'No error body');
+    console.error('AI Backend error status:', response.status, errorText);
+    return new Response(`AI backend error: ${response.status}`, { status: 500 });
   }
 
   console.log('Got successful response from AI backend, piping stream for ID:', id);
@@ -145,7 +165,7 @@ export async function POST(req: Request) {
   void (async () => {
     try {
       const { text, title } = await collectAssistantData(storageStream);
-      
+
       if (title) {
         console.log('Updating chat title to:', title);
         await updateChatTitleById({ chatId: id, title });
