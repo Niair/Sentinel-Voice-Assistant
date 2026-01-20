@@ -159,18 +159,8 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
     });
   };
 
-  if (!user) {
-    return (
-      <SidebarGroup>
-        <SidebarGroupContent>
-          <div className="flex w-full flex-row items-center justify-center gap-2 px-2 text-sm text-zinc-500">
-            Login to save and revisit previous chats!
-          </div>
-        </SidebarGroupContent>
-      </SidebarGroup>
-    );
-  }
-
+  // REMOVED: !user check to allow guest users to see history
+  
   if (isLoading) {
     return (
       <SidebarGroup>

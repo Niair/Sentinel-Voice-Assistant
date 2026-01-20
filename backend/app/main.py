@@ -36,59 +36,42 @@ async def stream_to_vercel(messages: List[Message], thread_id: str, user_id: str
         }
     }
 
-    print(f"Starting stream for thread_id: {thread_id}")
-    try:
-        # Use astream_events to capture everything (text + tools)
-        async for event in chatbot.astream_events(
-            {"messages": lc_messages}, 
-            config, 
-            version="v2"
-        ):
-            kind = event["event"]
-            print(f"Event: {kind}")
+    # Use astream_events to capture everything (text + tools)
+    async for event in chatbot.astream_events(
+        {"messages": lc_messages}, 
+        config, 
+        version="v2"
+    ):
+        kind = event["event"]
+        
+        # 1. Stream Text (Vercel Prefix '0:')
+        if kind == "on_chat_model_stream":
+            content = event["data"]["chunk"].content
+            if content:
+                yield f"0:{json.dumps(content)}\n"
+        
+        # 2. Stream Tool Calls (Vercel Prefix '9:')
+        elif kind == "on_tool_start":
+            payload = {
+                "toolCallId": event["run_id"],
+                "toolName": event["name"],
+                "args": event["data"].get("input", {})
+            }
+            yield f"9:{json.dumps(payload)}\n"
             
-            # 1. Stream Text (Vercel Prefix '0:')
-            if kind == "on_chat_model_stream":
-                content = event["data"]["chunk"].content
-                if content:
-                    print(f"Yielding text: {content[:20]}...")
-                    yield f"0:{json.dumps(content)}\n"
-            
-            # 2. Stream Tool Calls (Vercel Prefix '9:')
-            elif kind == "on_tool_start":
-                print(f"Tool start: {event['name']}")
-                payload = {
-                    "toolCallId": event["run_id"],
-                    "toolName": event["name"],
-                    "args": event["data"].get("input", {})
-                }
-                yield f"9:{json.dumps(payload)}\n"
-                
-            # 3. Stream Tool Results (Vercel Prefix 'a:')
-            elif kind == "on_tool_end":
-                print(f"Tool end: {event['name']}")
-                payload = {
-                    "toolCallId": event["run_id"],
-                    "result": event["data"].get("output", "Success")
-                }
-                yield f"a:{json.dumps(payload)}\n"
-    except Exception as e:
-        print(f"STREAM ERROR: {str(e)}")
-        yield f'3:{json.dumps({"message": str(e)})}\n'
-    print("Stream finished")
+        # 3. Stream Tool Results (Vercel Prefix 'a:')
+        elif kind == "on_tool_end":
+            payload = {
+                "toolCallId": event["run_id"],
+                "result": event["data"].get("output", "Success")
+            }
+            yield f"a:{json.dumps(payload)}\n"
 
 @app.post("/api/chat")
 async def chat(request: ChatRequest):
-    print(f"Received chat request for ID: {request.id}")
     return StreamingResponse(
         stream_to_vercel(request.messages, request.id, request.user_id),
-        media_type="text/plain",
-        headers={
-            "Content-Type": "text/plain; charset=utf-8",
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",  # Disables buffering in reverse proxies like Nginx
-        }
+        media_type="text/plain"
     )
 
 if __name__ == "__main__":

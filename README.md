@@ -16,6 +16,10 @@ uv venv -p 3.11
 .venv\Scripts\activate
 uv pip install -r requirements.txt
 
+# start
+backend: uv run python -m app.main
+frontend: pnpm dev
+
 -----------------------------------------------------------------------------------
 
 # Sentinel AI Assistant

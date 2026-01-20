@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { memo } from "react";
+import { memo, useState, useRef, useEffect } from "react";
 import { useChatVisibility } from "@/hooks/use-chat-visibility";
 import type { Chat } from "@/lib/db/schema";
 import {
@@ -9,6 +9,7 @@ import {
   MoreHorizontalIcon,
   ShareIcon,
   TrashIcon,
+  PencilEditIcon,
 } from "./icons";
 import {
   DropdownMenu,
@@ -25,29 +26,98 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "./ui/sidebar";
+import { toast } from "sonner";
+import { KeyedMutator } from "swr";
+import { ChatHistory } from "./sidebar-history";
 
 const PureChatItem = ({
   chat,
   isActive,
   onDelete,
   setOpenMobile,
+  mutate,
 }: {
   chat: Chat;
   isActive: boolean;
   onDelete: (chatId: string) => void;
   setOpenMobile: (open: boolean) => void;
+  mutate: KeyedMutator<ChatHistory[]>;
 }) => {
   const { visibilityType, setVisibilityType } = useChatVisibility({
     chatId: chat.id,
     initialVisibilityType: chat.visibility,
   });
 
+  const [isEditing, setIsEditing] = useState(false);
+  const [newTitle, setNewTitle] = useState(chat.title);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (isEditing && inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, [isEditing]);
+
+  const handleRename = async () => {
+    if (!newTitle.trim() || newTitle === chat.title) {
+      setIsEditing(false);
+      setNewTitle(chat.title);
+      return;
+    }
+
+    const renamePromise = fetch("/api/history/rename", {
+      method: "POST",
+      body: JSON.stringify({ id: chat.id, title: newTitle }),
+    });
+
+    toast.promise(renamePromise, {
+      loading: "Renaming chat...",
+      success: () => {
+        mutate((chatHistories) => {
+          if (chatHistories) {
+            return chatHistories.map((chatHistory) => ({
+              ...chatHistory,
+              chats: chatHistory.chats.map((c) =>
+                c.id === chat.id ? { ...c, title: newTitle } : c
+              ),
+            }));
+          }
+        });
+        setIsEditing(false);
+        return "Chat renamed successfully";
+      },
+      error: "Failed to rename chat",
+    });
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      handleRename();
+    } else if (e.key === "Escape") {
+      setIsEditing(false);
+      setNewTitle(chat.title);
+    }
+  };
+
   return (
     <SidebarMenuItem>
       <SidebarMenuButton asChild isActive={isActive}>
-        <Link href={`/chat/${chat.id}`} onClick={() => setOpenMobile(false)}>
-          <span>{chat.title}</span>
-        </Link>
+        {isEditing ? (
+          <div className="px-2 w-full">
+            <input
+              ref={inputRef}
+              className="bg-transparent outline-hidden w-full text-sm"
+              value={newTitle}
+              onChange={(e) => setNewTitle(e.target.value)}
+              onBlur={handleRename}
+              onKeyDown={handleKeyDown}
+            />
+          </div>
+        ) : (
+          <Link href={`/chat/${chat.id}`} onClick={() => setOpenMobile(false)}>
+            <span>{chat.title}</span>
+          </Link>
+        )}
       </SidebarMenuButton>
 
       <DropdownMenu modal={true}>
@@ -62,6 +132,14 @@ const PureChatItem = ({
         </DropdownMenuTrigger>
 
         <DropdownMenuContent align="end" side="bottom">
+          <DropdownMenuItem
+            className="cursor-pointer"
+            onSelect={() => setIsEditing(true)}
+          >
+            <PencilEditIcon />
+            <span>Rename</span>
+          </DropdownMenuItem>
+
           <DropdownMenuSub>
             <DropdownMenuSubTrigger className="cursor-pointer">
               <ShareIcon />
@@ -114,6 +192,9 @@ const PureChatItem = ({
 
 export const ChatItem = memo(PureChatItem, (prevProps, nextProps) => {
   if (prevProps.isActive !== nextProps.isActive) {
+    return false;
+  }
+  if (prevProps.chat.title !== nextProps.chat.title) {
     return false;
   }
   return true;

@@ -12,28 +12,30 @@ from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, System
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
-from langgraph.checkpoint.memory import MemorySaver
+from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.prebuilt import ToolNode, tools_condition
 from langchain_community.tools import DuckDuckGoSearchRun
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langgraph.store.base import BaseStore
 from langgraph.store.memory import InMemoryStore
+import aiosqlite
 from dotenv import load_dotenv
 
 load_dotenv()
 
 # --- Configuration ---
 DB_PATH = "sentinel_chatbot.db"
-MCP_PATH = "frontend/mcp/local_mcp.py" # Adjusted to a relative path or make it optional
+# UPDATE THESE PATHS TO YOUR ACTUAL LOCAL PATHS
+MCP_PATH = "E:/_Projects/GAIP/MCP/chat_bot_with_mcp/local_mcp.py"
 
-SERVERS = {}
-if os.path.exists(MCP_PATH):
-    SERVERS["math"] = {
+SERVERS = {
+    "math": {
         "transport": "stdio",
         "command": "uv",
         "args": ["run", "fastmcp", "run", MCP_PATH],
         "env": {"PYTHONPATH": os.path.dirname(MCP_PATH)}
     }
+}
 
 # --- Global RAG State ---
 _retriever = None
@@ -112,11 +114,7 @@ async def agent(state: ChatState, config: RunnableConfig, store: BaseStore):
         mcp_tools = []
     
     all_tools = [search_tool, rag_tool] + list(mcp_tools)
-    model = ChatGroq(
-        model="llama-3.3-70b-versatile", 
-        temperature=0.4,
-        api_key=os.getenv("GROQ_API_KEY")
-    )
+    model = ChatGroq(model="llama-3.3-70b-versatile", temperature=0.4)
     llm_with_tools = model.bind_tools(all_tools)
 
     messages = [SystemMessage(content=system_prompt)] + state['messages']
@@ -146,6 +144,7 @@ _store = InMemoryStore() # In production, use a persistent store like PostgresSt
 async def get_chatbot():
     global _chatbot
     if _chatbot is None:
-        checkpointer = MemorySaver()
+        conn = await aiosqlite.connect(DB_PATH)
+        checkpointer = AsyncSqliteSaver(conn)
         _chatbot = await build_graph(checkpointer, _store)
     return _chatbot
