@@ -87,7 +87,7 @@ You are a helpful assistant with memory capabilities.
 If user-specific memory is available, use it to personalize 
 your responses based on what you know about the user.
 
-The user's memory (which may be empty) is provided as: {user_details_content}
+The user’s memory (which may be empty) is provided as: {user_details_content}
 """
 
 async def agent(state: ChatState, config: RunnableConfig, store: BaseStore):
@@ -117,19 +117,7 @@ async def agent(state: ChatState, config: RunnableConfig, store: BaseStore):
     model = ChatGroq(model="llama-3.3-70b-versatile", temperature=0.4)
     llm_with_tools = model.bind_tools(all_tools)
 
-    # Filter and validate messages
-    validated_messages = []
-    for msg in state['messages']:
-        # Skip tool messages with empty or invalid content
-        if hasattr(msg, 'type') and msg.type == 'tool':
-            if not msg.content or (isinstance(msg.content, list) and len(msg.content) == 0):
-                continue
-            # Ensure content is a string
-            if isinstance(msg.content, list):
-                msg.content = str(msg.content)
-        validated_messages.append(msg)
-
-    messages = [SystemMessage(content=system_prompt)] + validated_messages
+    messages = [SystemMessage(content=system_prompt)] + state['messages']
     response = await llm_with_tools.ainvoke(messages)
     return {"messages": [response]}
 
@@ -138,41 +126,11 @@ async def build_graph(checkpointer, store):
     # ToolNode needs all tools that might be called
     # For MCP tools, we'd ideally know them beforehand or add them dynamically
     # For now, we include the static ones.
-    
-    # Create safe tool node wrapper
-    base_tool_node = ToolNode([search_tool, rag_tool])
-    
-    async def safe_tool_node(state: ChatState) -> ChatState:
-        """Wrapper around tool node to ensure all tool messages have content"""
-        try:
-            result = await base_tool_node.ainvoke(state)
-            
-            # Validate and fix tool message content
-            if 'messages' in result:
-                fixed_messages = []
-                for msg in result['messages']:
-                    if hasattr(msg, 'type') and msg.type == 'tool':
-                        # Ensure tool message has content
-                        if not msg.content or (isinstance(msg.content, list) and len(msg.content) == 0):
-                            msg.content = "Tool executed successfully with no output"
-                        # Ensure content is a string
-                        elif isinstance(msg.content, list):
-                            msg.content = str(msg.content)
-                    fixed_messages.append(msg)
-                result['messages'] = fixed_messages
-            
-            return result
-        except Exception as e:
-            print(f"Error in tool execution: {e}")
-            # Return error message as tool result
-            return {"messages": [ToolMessage(
-                content=f"Tool execution failed: {str(e)}",
-                tool_call_id=state['messages'][-1].tool_calls[0]['id'] if state['messages'][-1].tool_calls else "error"
-            )]}
+    tool_node = ToolNode([search_tool, rag_tool]) 
 
     graph = StateGraph(ChatState)
     graph.add_node("agent", agent)
-    graph.add_node("tools", safe_tool_node)
+    graph.add_node("tools", tool_node)
     graph.add_edge(START, "agent")
     graph.add_conditional_edges("agent", tools_condition)
     graph.add_edge("tools", "agent")
@@ -182,14 +140,11 @@ async def build_graph(checkpointer, store):
 # --- Singleton ---
 _chatbot = None
 _store = InMemoryStore() # In production, use a persistent store like PostgresStore
-model = None  # Export model for title generation
 
 async def get_chatbot():
-    global _chatbot, model
+    global _chatbot
     if _chatbot is None:
         conn = await aiosqlite.connect(DB_PATH)
         checkpointer = AsyncSqliteSaver(conn)
         _chatbot = await build_graph(checkpointer, _store)
-        # Initialize model for title generation
-        model = ChatGroq(model="llama-3.3-70b-versatile", temperature=0.4)
     return _chatbot

@@ -119,7 +119,7 @@ export async function POST(req: Request) {
     console.error('DATABASE ERROR in /api/chat (persistence check):', error);
   }
 
-  // 2. This calls your FastAPI backend running on port 8000
+  // This calls your FastAPI backend running on port 8000
   const response = await fetch('http://127.0.0.1:8000/api/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -141,10 +141,7 @@ export async function POST(req: Request) {
 
   console.log('Got successful response from AI backend, piping stream for ID:', id);
 
-  // 3. Tee the stream: one copy for client, one for database storage
   const [clientStream, storageStream] = response.body.tee();
-  
-  // 4. Background async task to collect and save assistant response
   void (async () => {
     try {
       const { text, title } = await collectAssistantData(storageStream);

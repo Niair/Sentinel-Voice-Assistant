@@ -4,7 +4,7 @@
       
       git add .
       
-      git commit -m "sen-2"
+      git commit -m "Day-
       
       git push -u origin main
 

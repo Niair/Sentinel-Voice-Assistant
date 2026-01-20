@@ -4,7 +4,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import List, Dict, Any
 from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
-from app.graph import get_chatbot, model
+from app.graph import get_chatbot
 
 app = FastAPI(title="Sentinel AI Backend")
 
@@ -36,11 +36,6 @@ async def stream_to_vercel(messages: List[Message], thread_id: str, user_id: str
         }
     }
 
-    # Track first exchange for title generation
-    is_first_exchange = len(lc_messages) <= 1
-    user_message = lc_messages[-1].content if lc_messages else ""
-    ai_response = ""
-
     # Use astream_events to capture everything (text + tools)
     async for event in chatbot.astream_events(
         {"messages": lc_messages}, 
@@ -53,7 +48,6 @@ async def stream_to_vercel(messages: List[Message], thread_id: str, user_id: str
         if kind == "on_chat_model_stream":
             content = event["data"]["chunk"].content
             if content:
-                ai_response += content  # Collect for title generation
                 yield f"0:{json.dumps(content)}\n"
         
         # 2. Stream Tool Calls (Vercel Prefix '9:')
@@ -72,17 +66,6 @@ async def stream_to_vercel(messages: List[Message], thread_id: str, user_id: str
                 "result": event["data"].get("output", "Success")
             }
             yield f"a:{json.dumps(payload)}\n"
-    
-    # 4. Generate title after first exchange (Vercel Prefix 'c:')
-    if is_first_exchange and ai_response:
-        try:
-            if model:
-                title_prompt = f"Generate ONLY a short title (max 5 words, no quotes) based on:\nUser: {user_message}\nAssistant: {ai_response}"
-                title_response = await model.ainvoke(title_prompt)
-                title = title_response.content.strip().replace('"', '').replace("'", '')[:50]
-                yield f"c:{json.dumps(title)}\n"
-        except Exception as e:
-            print(f"Title generation error: {e}")
 
 @app.post("/api/chat")
 async def chat(request: ChatRequest):
