@@ -148,10 +148,20 @@ function PureMultimodalInput({
   const submitForm = useCallback(() => {
     window.history.pushState({}, "", `/chat/${chatId}`);
 
+    // Enhanced file handling for RAG
+    const fileAttachments = attachments.filter(a =>
+      a.contentType === 'application/pdf' || a.name?.endsWith('.pdf')
+    );
+
+    let enhancedInput = input;
+    if (fileAttachments.length > 0) {
+      enhancedInput = input + `\n\n[User uploaded ${fileAttachments.length} PDF file(s) for context]`;
+    }
+
     sendMessage({
       role: "user",
       parts: [
-        ...attachments.map((attachment) => ({
+        ...fileAttachments.map((attachment) => ({
           type: "file" as const,
           url: attachment.url,
           name: attachment.name,
@@ -159,7 +169,7 @@ function PureMultimodalInput({
         })),
         {
           type: "text",
-          text: input,
+          text: enhancedInput,
         },
       ],
     });

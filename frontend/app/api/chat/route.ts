@@ -72,11 +72,9 @@ async function collectAssistantData(stream: ReadableStream<Uint8Array>) {
       if (!payload) return;
       try {
         const parsed = JSON.parse(payload);
-        if (typeof parsed === 'string') {
-          title = parsed;
-        }
+        // Completion message - NOT a title
       } catch {
-        title = payload.replace(/^"|"$/g, '');
+        // Ignore completion for title purposes
       }
     }
   };
@@ -98,36 +96,33 @@ async function collectAssistantData(stream: ReadableStream<Uint8Array>) {
     consumeLine(buffer);
   }
 
-  return { text, title };
+  return { text, title: '' };
 }
 
 export async function POST(req: Request) {
   const { messages, id, selectedChatModel }: { messages: Array<Message>, id: string, selectedChatModel?: string } = await req.json();
-  const userId = '00000000-0000-0000-0000-000000000000'; // Our Guest User
+  const userId = '00000000-0000-0000-0000-000000000000';
 
-  // 1. Ensure the Guest User exists and save the chat
+  // Extract first USER message for title
+  const firstUserMessage = messages.find(m => m.role === 'user');
+  const titleFromUser = firstUserMessage ? getMessageText(firstUserMessage).slice(0, 50) : 'New Chat';
+
   try {
-    // This is a self-healing check to make sure our hardcoded guest user exists
     await ensureGuestUserExists(userId);
 
     const chatExists = await getChatById({ id });
     if (!chatExists && messages.length > 0) {
-      const firstMessage = messages.find((message) => message.role === 'user') ?? messages[0];
-      const firstText = getMessageText(firstMessage);
-      const initialTitle = firstText.slice(0, 50) || 'New Chat';
-
       console.log('Saving new chat metadata for ID:', id);
       await saveChat({
         id,
         userId,
-        title: initialTitle,
+        title: titleFromUser,
         visibility: 'private'
       });
 
-      await saveMessageIfMissing(firstMessage, id);
+      await saveMessageIfMissing(firstUserMessage || messages[0], id);
       console.log('Chat and first message saved successfully');
     } else {
-      // If chat already exists, we only save the LATEST user message (if not already there)
       const latestUserMessage = [...messages].reverse().find((message) => message.role === 'user');
       if (latestUserMessage) {
         await saveMessageIfMissing(latestUserMessage, id);
@@ -137,16 +132,29 @@ export async function POST(req: Request) {
     console.error('DATABASE ERROR in /api/chat (persistence check):', error);
   }
 
-  // This calls your FastAPI backend running on port 8000
+  // Send attachments to backend
+  const messagesWithAttachments = messages.map(m => {
+    const baseMessage = {
+      role: m.role,
+      content: String(getTextFromMessage(m as any) || m.content || ''),
+      id: m.id
+    };
+    
+    if ((m as any).parts) {
+      const fileParts = (m as any).parts.filter((p: any) => p.type === 'file');
+      if (fileParts.length > 0) {
+        (baseMessage as any).attachments = fileParts;
+      }
+    }
+    
+    return baseMessage;
+  });
+
   const response = await fetch('http://127.0.0.1:8000/api/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      messages: messages.map(m => ({
-        role: m.role,
-        content: String(getTextFromMessage(m as any) || m.content || ''),
-        id: m.id
-      })),
+      messages: messagesWithAttachments,
       id: id,
       user_id: userId,
       model: selectedChatModel
@@ -164,11 +172,12 @@ export async function POST(req: Request) {
   const [clientStream, storageStream] = response.body.tee();
   void (async () => {
     try {
-      const { text, title } = await collectAssistantData(storageStream);
+      const { text } = await collectAssistantData(storageStream);
 
-      if (title) {
-        console.log('Updating chat title to:', title);
-        await updateChatTitleById({ chatId: id, title });
+      // Only update title if it's a new chat
+      if (!chatExists && titleFromUser) {
+        console.log('Updating chat title to:', titleFromUser);
+        await updateChatTitleById({ chatId: id, title: titleFromUser });
       }
 
       if (text.trim()) {
@@ -184,7 +193,7 @@ export async function POST(req: Request) {
         });
       }
     } catch (error) {
-      console.error('DATABASE ERROR in /api/chat (assistant/title save):', error);
+      console.error('DATABASE ERROR in /api/chat (assistant save):', error);
     }
   })();
 
