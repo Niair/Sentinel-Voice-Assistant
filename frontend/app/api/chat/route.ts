@@ -33,7 +33,7 @@ async function collectAssistantData(stream: ReadableStream<Uint8Array>) {
   const decoder = new TextDecoder();
   let buffer = '';
   let text = '';
-  let title = '';
+  let hasError = false;
 
   const consumeLine = (line: string) => {
     const trimmed = line.trim();
@@ -68,35 +68,34 @@ async function collectAssistantData(stream: ReadableStream<Uint8Array>) {
         text += payload.replace(/^"|"$/g, '');
       }
     } else if (trimmed.startsWith('c:')) {
-      const payload = trimmed.slice(2).trim();
-      if (!payload) return;
-      try {
-        const parsed = JSON.parse(payload);
-        // Completion message - NOT a title
-      } catch {
-        // Ignore completion for title purposes
-      }
+      // Completion marker - ignore for title
     }
   };
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    let newlineIndex = buffer.indexOf('\n');
-    while (newlineIndex !== -1) {
-      const line = buffer.slice(0, newlineIndex);
-      buffer = buffer.slice(newlineIndex + 1);
-      consumeLine(line);
-      newlineIndex = buffer.indexOf('\n');
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let newlineIndex = buffer.indexOf('\n');
+      while (newlineIndex !== -1) {
+        const line = buffer.slice(0, newlineIndex);
+        buffer = buffer.slice(newlineIndex + 1);
+        consumeLine(line);
+        newlineIndex = buffer.indexOf('\n');
+      }
     }
+
+    if (buffer.trim()) {
+      consumeLine(buffer);
+    }
+  } catch (error) {
+    console.error('Stream reading error:', error);
+    hasError = true;
+    text = "I encountered an error while reading the response. Please try again.";
   }
 
-  if (buffer.trim()) {
-    consumeLine(buffer);
-  }
-
-  return { text, title: '' };
+  return { text, hasError };
 }
 
 export async function POST(req: Request) {
@@ -139,14 +138,14 @@ export async function POST(req: Request) {
       content: String(getTextFromMessage(m as any) || m.content || ''),
       id: m.id
     };
-    
+
     if ((m as any).parts) {
       const fileParts = (m as any).parts.filter((p: any) => p.type === 'file');
       if (fileParts.length > 0) {
         (baseMessage as any).attachments = fileParts;
       }
     }
-    
+
     return baseMessage;
   });
 

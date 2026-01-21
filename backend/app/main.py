@@ -37,7 +37,6 @@ async def upload_file(file: UploadFile = File(...), thread_id: str = "default_th
     if not file.filename.endswith('.pdf'):
         raise HTTPException(400, "Only PDF files are supported for RAG")
     
-    # Save uploaded file
     upload_dir = "uploads"
     os.makedirs(upload_dir, exist_ok=True)
     file_path = os.path.join(upload_dir, f"{thread_id}_{file.filename}")
@@ -46,7 +45,6 @@ async def upload_file(file: UploadFile = File(...), thread_id: str = "default_th
         content = await file.read()
         f.write(content)
     
-    # Process document for RAG
     result = process_document(file_path, thread_id)
     
     if result.get('success'):
@@ -63,30 +61,26 @@ async def upload_file(file: UploadFile = File(...), thread_id: str = "default_th
 async def chat(request: ChatRequest):
     chatbot = await get_chatbot()
     
-    # Process any file attachments before chat
     thread_id = request.id
     file_processed = False
     
-    # Check last message for file attachments
+    # Process file attachments
     last_message = request.messages[-1] if request.messages else None
     if last_message and last_message.attachments:
         for attachment in last_message.attachments:
             if attachment.get('url') and 'pdf' in attachment.get('name', '').lower():
-                # Extract file path from URL
                 filename = attachment['name']
                 file_path = os.path.join("uploads", f"{thread_id}_{filename}")
-                
                 if os.path.exists(file_path):
-                    print(f"🔄 Re-processing existing file: {filename}")
+                    print(f"🔄 Re-processing file: {filename}")
                     result = process_document(file_path, thread_id)
                     if result.get('success'):
                         file_processed = True
     
-    # Convert messages to LangChain format
+    # Convert messages
     lc_messages = []
     for m in request.messages:
         if m.role == "user":
-            # Include file context in system message if file was processed
             if file_processed:
                 lc_messages.append(SystemMessage(content=f"[File {attachment.get('name')} is now available for RAG queries]"))
             lc_messages.append(HumanMessage(content=m.content))
@@ -125,23 +119,27 @@ async def chat(request: ChatRequest):
                     
                 # Tool results
                 elif kind == "on_tool_end":
+                    result = event["data"].get("output", "Success")
+                    # ✅ FIX: Ensure result is serializable
+                    if isinstance(result, dict):
+                        if "error" in result:
+                            result = f"Tool error: {result['error']}"
+                        else:
+                            result = json.dumps(result)
                     payload = {
                         "toolCallId": event["run_id"],
-                        "result": event["data"].get("output", "Success")
+                        "result": result
                     }
                     yield f"a:{json.dumps(payload)}\n"
+                    
         except Exception as e:
-            yield f"0:{json.dumps(f'Error: {str(e)}')}\n"
+            print(f"Stream error: {e}")
+            # ✅ FIX: Send error as complete assistant message
+            error_msg = f"I encountered an error: {str(e)}. Please try rephrasing your question."
+            yield f"0:{json.dumps(error_msg)}\n"
+            yield f"c:{json.dumps([error_msg])}\n"
 
     return StreamingResponse(stream_generator(), media_type="text/plain")
-
-@app.post("/api/rag/status")
-async def rag_status(request: Request):
-    """Check RAG status for a thread"""
-    data = await request.json()
-    thread_id = data.get('thread_id', 'default_thread')
-    status = get_rag_status(thread_id)
-    return status
 
 @app.get("/health")
 async def health():

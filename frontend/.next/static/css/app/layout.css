@@ -1907,6 +1907,9 @@
   .border-red-200 {
     border-color: var(--color-red-200);
   }
+  .border-red-500 {
+    border-color: var(--color-red-500);
+  }
   .border-red-500\/30 {
     border-color: color-mix(in srgb, oklch(0.637 0.237 25.331) 30%, transparent);
     @supports (color: color-mix(in lab, red, red)) {

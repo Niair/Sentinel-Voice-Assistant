@@ -376,6 +376,22 @@ const PurePreviewMessage = ({
             return null;
           })}
 
+          {/* ✅ FIX: Render assistant error messages when no parts exist */}
+          {message.role === 'assistant' && !message.parts && message.content && (
+            <div key="error-message">
+              <MessageContent
+                className={cn(
+                  "w-fit px-4 py-2.5 shadow-sm transition-all",
+                  "rounded-2xl rounded-tl-none bg-secondary text-foreground border-l-4 border-red-500"
+                )}
+              >
+                <div className="prose dark:prose-invert whitespace-pre-wrap text-red-600">
+                  {sanitizeText(message.content)}
+                </div>
+              </MessageContent>
+            </div>
+          )}
+
           {!isReadonly && (
             <MessageActions
               chatId={chatId}
