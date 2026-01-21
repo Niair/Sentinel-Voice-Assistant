@@ -1,11 +1,5 @@
 {
   "pages": {
-    "/(chat)/chat/[id]/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/css/app/(chat)/chat/[id]/page.css",
-      "static/chunks/app/(chat)/chat/[id]/page.js"
-    ],
     "/layout": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",

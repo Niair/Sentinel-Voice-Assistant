@@ -28,74 +28,59 @@ async function saveMessageIfMissing(message: Message, chatId: string) {
   });
 }
 
+// FIXED: Simplified stream parser that correctly handles Vercel AI SDK format
 async function collectAssistantData(stream: ReadableStream<Uint8Array>) {
   const reader = stream.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
   let text = '';
-  let hasError = false;
-
-  const consumeLine = (line: string) => {
-    const trimmed = line.trim();
-    if (trimmed.startsWith('0:')) {
-      const payload = trimmed.slice(2).trim();
-      if (!payload) return;
-      try {
-        const parsed = JSON.parse(payload);
-        if (typeof parsed === 'string') {
-          text += parsed;
-        } else if (parsed && typeof parsed === 'object') {
-          if (typeof (parsed as any).content === 'string') {
-            text += (parsed as any).content;
-          } else if (Array.isArray((parsed as any).content)) {
-            for (const part of (parsed as any).content) {
-              if (typeof part === 'string') {
-                text += part;
-              } else if (part && typeof part === 'object' && part.type === 'text' && typeof part.text === 'string') {
-                text += part.text;
-              }
-            }
-          } else if (Array.isArray(parsed)) {
-            for (const part of parsed as any[]) {
-              if (typeof part === 'string') text += part;
-              else if (part && typeof part === 'object' && part.type === 'text' && typeof part.text === 'string') {
-                text += part.text;
-              }
-            }
-          }
-        }
-      } catch {
-        text += payload.replace(/^"|"$/g, '');
-      }
-    } else if (trimmed.startsWith('c:')) {
-      // Completion marker - ignore for title
-    }
-  };
 
   try {
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
+
       buffer += decoder.decode(value, { stream: true });
       let newlineIndex = buffer.indexOf('\n');
+
       while (newlineIndex !== -1) {
         const line = buffer.slice(0, newlineIndex);
         buffer = buffer.slice(newlineIndex + 1);
-        consumeLine(line);
+
+        // Parse Vercel AI SDK streaming format
+        if (line.startsWith('0:')) {
+          const payload = line.slice(2).trim();
+          try {
+            const parsed = JSON.parse(payload);
+            // Handle both string and object formats
+            if (typeof parsed === 'string') {
+              text += parsed;
+            } else if (parsed?.content) {
+              text += parsed.content;
+            }
+          } catch {
+            // Fallback for unescaped strings
+            text += payload.replace(/^"|"$/g, '');
+          }
+        }
+
         newlineIndex = buffer.indexOf('\n');
       }
     }
 
+    // Handle any remaining buffer
     if (buffer.trim()) {
-      consumeLine(buffer);
+      if (buffer.startsWith('0:')) {
+        const payload = buffer.slice(2).trim();
+        text += payload.replace(/^"|"$/g, '');
+      }
     }
   } catch (error) {
     console.error('Stream reading error:', error);
-    hasError = true;
     text = "I encountered an error while reading the response. Please try again.";
   }
 
-  return { text, hasError };
+  return { text };
 }
 
 export async function POST(req: Request) {
@@ -106,10 +91,16 @@ export async function POST(req: Request) {
   const firstUserMessage = messages.find(m => m.role === 'user');
   const titleFromUser = firstUserMessage ? getMessageText(firstUserMessage).slice(0, 50) : 'New Chat';
 
+  // FIXED: Declare chatExists at function scope so it's accessible in the async callback
+  let chatExists = false;
+
   try {
     await ensureGuestUserExists(userId);
 
-    const chatExists = await getChatById({ id });
+    // Check if chat exists
+    const existingChat = await getChatById({ id });
+    chatExists = !!existingChat;
+
     if (!chatExists && messages.length > 0) {
       console.log('Saving new chat metadata for ID:', id);
       await saveChat({
@@ -168,12 +159,15 @@ export async function POST(req: Request) {
 
   console.log('Got successful response from AI backend, piping stream for ID:', id);
 
+  // Split stream for client response and background processing
   const [clientStream, storageStream] = response.body.tee();
+
+  // Process assistant response in background
   void (async () => {
     try {
       const { text } = await collectAssistantData(storageStream);
 
-      // Only update title if it's a new chat
+      // Only update title if it's a new chat (chatExists is now properly scoped)
       if (!chatExists && titleFromUser) {
         console.log('Updating chat title to:', titleFromUser);
         await updateChatTitleById({ chatId: id, title: titleFromUser });
