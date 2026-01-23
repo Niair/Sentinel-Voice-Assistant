@@ -115,13 +115,15 @@ const PurePreviewMessage = ({
             <div key="content-fallback">
               <MessageContent
                 className={cn("w-fit px-4 py-2.5 shadow-sm transition-all", {
-                  "rounded-2xl rounded-tr-none bg-primary text-primary-foreground shadow-primary/20":
+                  "rounded-2xl rounded-tr-none bg-primary text-white shadow-primary/20":
                     message.role === "user",
                   "rounded-2xl rounded-tl-none bg-secondary text-foreground shadow-sm visible opacity-100":
                     message.role === "assistant",
                 })}
               >
-                <div className="prose dark:prose-invert whitespace-pre-wrap">{sanitizeText(message.content)}</div>
+                <div className={cn("prose dark:prose-invert whitespace-pre-wrap font-sans", message.role === "user" && "text-white")}
+                >
+                  {sanitizeText(message.content)}</div>
               </MessageContent>
             </div>
           )}
@@ -148,21 +150,23 @@ const PurePreviewMessage = ({
               }
             }
 
-            if (type === "text" || (part as any).text) {
-              const text = (part as any).text || "";
+            if (type === "text") {
+              const text = typeof (part as any).text === "string" ? (part as any).text : "";
               if (mode === "view") {
                 return (
                   <div key={key}>
                     <MessageContent
                       className={cn("w-fit px-4 py-2.5 shadow-sm transition-all", {
-                        "rounded-2xl rounded-tr-none bg-primary text-primary-foreground shadow-primary/20":
+                        "rounded-2xl rounded-tr-none bg-primary text-white shadow-primary/20":
                           message.role === "user",
                         "rounded-2xl rounded-tl-none bg-secondary text-foreground shadow-sm visible opacity-100 border-2 border-primary":
                           message.role === "assistant",
                       })}
                       data-testid="message-content"
                     >
-                      <div className="prose dark:prose-invert whitespace-pre-wrap font-sans">{sanitizeText(text)}</div>
+                      <div className={cn("prose dark:prose-invert whitespace-pre-wrap font-sans", message.role === "user" && "text-white")}
+                      >
+                        {sanitizeText(text)}</div>
                     </MessageContent>
                   </div>
                 );

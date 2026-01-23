@@ -130,13 +130,29 @@ export function Chat({
     },
   });
 
+  const lastAssistantHasTextRef = useRef(false);
   useEffect(() => {
-    console.log('Chat Status:', status);
-    if (messages.length > 0) {
-      console.log('Last Message Content:', messages[messages.length - 1].content);
-      console.log('Last Message Parts:', messages[messages.length - 1].parts);
+    if (messages.length === 0) {
+      lastAssistantHasTextRef.current = false;
+      return;
     }
-  }, [status, messages]);
+
+    const last = messages[messages.length - 1];
+
+    const assistantHasText = last.role === "assistant" && Array.isArray(last.parts) && last.parts.some((p: any) => typeof p?.text === "string" && (p.text ?? "").length > 0);
+
+
+    if (assistantHasText && !lastAssistantHasTextRef.current) {
+      lastAssistantHasTextRef.current = true;
+      setMessages((prev) => prev.slice());
+      return;
+    }
+
+    if (!assistantHasText) {
+      lastAssistantHasTextRef.current = false;
+    }
+
+  }, [messages, setMessages]);
 
   const searchParams = useSearchParams();
   const query = searchParams.get("query");
