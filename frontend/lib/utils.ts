@@ -117,9 +117,9 @@ export function getTrailingMessageId({
   return trailingMessage.id;
 }
 
-export function sanitizeText(text?: string): string {
-  if (!text) return "";
-  return text.replace('<has_function_call>', '');
+export function sanitizeText(text?: string) {
+  if (typeof text !== "string") return "";
+  return text.replace("<has_function_call>", "");
 }
 
 export function convertToUIMessages(messages: DBMessage[]): ChatMessage[] {

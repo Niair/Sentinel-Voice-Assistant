@@ -27,3 +27,8 @@ docker rm -f sentinel-postgres
 docker run -d --name sentinel-postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_USER=postgres -e POSTGRES_DB=postgres -p 5442:5432 postgres:15-alpine
 
 docker ps
+
+-----------------------------------------------------------------------------------
+
+
+npx drizzle-kit push --config=drizzle.config.ts

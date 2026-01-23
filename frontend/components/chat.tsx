@@ -90,29 +90,17 @@ export function Chat({
     id,
     messages: initialMessages,
     generateId: generateUUID,
-    sendAutomaticallyWhen: ({ messages: currentMessages }) => {
-      const lastMessage = currentMessages.at(-1);
-      const shouldContinue =
-        lastMessage?.parts?.some(
-          (part) =>
-            "state" in part &&
-            part.state === "approval-responded" &&
-            "approval" in part &&
-            (part.approval as { approved?: boolean })?.approved === true
-        ) ?? false;
-      return shouldContinue;
-    },
-    // @ts-ignore
+
     body: {
       selectedChatModel: currentModelId,
       selectedVisibilityType: visibilityType,
     },
+
     streamProtocol: "data",
+
     onData: (dataPart) => {
+      console.log("STREAM onData:", dataPart);
       setDataStream((ds) => (ds ? [...ds, dataPart] : []));
-    },
-    onFinish: () => {
-      mutate(unstable_serialize(getChatHistoryPaginationKey));
     },
     onError: (error) => {
       if (error instanceof ChatSDKError) {
@@ -130,46 +118,9 @@ export function Chat({
     },
   });
 
-  const lastAssistantHasTextRef = useRef(false);
-  useEffect(() => {
-    if (messages.length === 0) {
-      lastAssistantHasTextRef.current = false;
-      return;
-    }
-
-    const last = messages[messages.length - 1];
-
-    const assistantHasText = last.role === "assistant" && Array.isArray(last.parts) && last.parts.some((p: any) => typeof p?.text === "string" && (p.text ?? "").length > 0);
-
-
-    if (assistantHasText && !lastAssistantHasTextRef.current) {
-      lastAssistantHasTextRef.current = true;
-      setMessages((prev) => prev.slice());
-      return;
-    }
-
-    if (!assistantHasText) {
-      lastAssistantHasTextRef.current = false;
-    }
-
-  }, [messages, setMessages]);
-
   const searchParams = useSearchParams();
   const query = searchParams.get("query");
 
-  const [hasAppendedQuery, setHasAppendedQuery] = useState(false);
-
-  useEffect(() => {
-    if (query && !hasAppendedQuery) {
-      sendMessage({
-        role: "user" as const,
-        parts: [{ type: "text", text: query }],
-      });
-
-      setHasAppendedQuery(true);
-      window.history.replaceState({}, "", `/chat/${id}`);
-    }
-  }, [query, sendMessage, hasAppendedQuery, id]);
 
   const { data: votes } = useSWR<Vote[]>(
     messages.length >= 2 ? `/api/vote?chatId=${id}` : null,
@@ -224,6 +175,7 @@ export function Chat({
               setMessages={setMessages}
               status={status}
               stop={stop}
+              onCommitStream={() => setDataStream({ type: "commit" })}
             />
           )}
         </div>

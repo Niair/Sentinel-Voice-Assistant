@@ -145,7 +145,7 @@ function PureMultimodalInput({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadQueue, setUploadQueue] = useState<string[]>([]);
 
-  const submitForm = useCallback(() => {
+  const submitForm = useCallback(async () => {
     window.history.pushState({}, "", `/chat/${chatId}`);
 
     // Enhanced file handling for RAG
@@ -158,7 +158,7 @@ function PureMultimodalInput({
       enhancedInput = input + `\n\n[User uploaded ${fileAttachments.length} PDF file(s) for context]`;
     }
 
-    sendMessage({
+    await sendMessage({
       role: "user",
       parts: [
         ...fileAttachments.map((attachment) => ({
