@@ -102,6 +102,9 @@ export function Chat({
       console.log("STREAM onData:", dataPart);
       setDataStream((ds) => (ds ? [...ds, dataPart] : []));
     },
+    onFinish: () => {
+      setMessages((prev) => prev.map(m => ({ ...m })));
+    },
     onError: (error) => {
       if (error instanceof ChatSDKError) {
         if (
@@ -175,7 +178,7 @@ export function Chat({
               setMessages={setMessages}
               status={status}
               stop={stop}
-              onCommitStream={() => setDataStream({ type: "commit" })}
+            // onCommitStream={() => setDataStream({ type: "commit" })}
             />
           )}
         </div>

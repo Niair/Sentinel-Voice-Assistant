@@ -30,5 +30,5 @@ docker ps
 
 -----------------------------------------------------------------------------------
 
-
+frontend:
 npx drizzle-kit push --config=drizzle.config.ts
