@@ -95,7 +95,7 @@ async def chat(request: ChatRequest):
         }
     }
 
-    async def stream_generator():
+    async def stream_generator(lc_messages):
         try:
             async for event in chatbot.astream_events(
                 {"messages": lc_messages}, config, version="v2"
@@ -139,7 +139,7 @@ async def chat(request: ChatRequest):
             yield f"0:{json.dumps(error_msg)}\n"
             yield f"c:{json.dumps([error_msg])}\n"
 
-    return StreamingResponse(stream_generator(), media_type="text/plain")
+    return StreamingResponse(stream_generator(lc_messages), media_type="text/plain")
 
 @app.get("/health")
 async def health():

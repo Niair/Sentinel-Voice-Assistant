@@ -1,6 +1,6 @@
 {
   "node": {
-    "bb13c2d274971a3b14632e1e1373e5036ec7ca1c": {
+    "729b420c6ec17668ecc03121da48ebe3a3d20199": {
       "workers": {
         "app/(chat)/chat/[id]/page": "(action-browser)/./node_modules/.pnpm/next@14.1.0_@opentelemetry+_95d5a05ac7ec0d735f17a907e734f3d8/node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22E%3A%5C%5C_Projects%5C%5CSentinal-Voice-Assistant%5C%5Cfrontend%5C%5Cartifacts%5C%5Cactions.ts%22%2C%5B%22getSuggestions%22%5D%5D%2C%5B%22E%3A%5C%5C_Projects%5C%5CSentinal-Voice-Assistant%5C%5Cfrontend%5C%5Capp%5C%5C(chat)%5C%5Cactions.ts%22%2C%5B%22deleteTrailingMessages%22%5D%5D%5D&__client_imported__=true!",
         "app/page": "(action-browser)/./node_modules/.pnpm/next@14.1.0_@opentelemetry+_95d5a05ac7ec0d735f17a907e734f3d8/node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22E%3A%5C%5C_Projects%5C%5CSentinal-Voice-Assistant%5C%5Cfrontend%5C%5Cartifacts%5C%5Cactions.ts%22%2C%5B%22getSuggestions%22%5D%5D%2C%5B%22E%3A%5C%5C_Projects%5C%5CSentinal-Voice-Assistant%5C%5Cfrontend%5C%5Capp%5C%5C(chat)%5C%5Cactions.ts%22%2C%5B%22deleteTrailingMessages%22%5D%5D%5D&__client_imported__=true!"
@@ -10,7 +10,7 @@
         "app/page": "action-browser"
       }
     },
-    "729b420c6ec17668ecc03121da48ebe3a3d20199": {
+    "bb13c2d274971a3b14632e1e1373e5036ec7ca1c": {
       "workers": {
         "app/(chat)/chat/[id]/page": "(action-browser)/./node_modules/.pnpm/next@14.1.0_@opentelemetry+_95d5a05ac7ec0d735f17a907e734f3d8/node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22E%3A%5C%5C_Projects%5C%5CSentinal-Voice-Assistant%5C%5Cfrontend%5C%5Cartifacts%5C%5Cactions.ts%22%2C%5B%22getSuggestions%22%5D%5D%2C%5B%22E%3A%5C%5C_Projects%5C%5CSentinal-Voice-Assistant%5C%5Cfrontend%5C%5Capp%5C%5C(chat)%5C%5Cactions.ts%22%2C%5B%22deleteTrailingMessages%22%5D%5D%5D&__client_imported__=true!",
         "app/page": "(action-browser)/./node_modules/.pnpm/next@14.1.0_@opentelemetry+_95d5a05ac7ec0d735f17a907e734f3d8/node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22E%3A%5C%5C_Projects%5C%5CSentinal-Voice-Assistant%5C%5Cfrontend%5C%5Cartifacts%5C%5Cactions.ts%22%2C%5B%22getSuggestions%22%5D%5D%2C%5B%22E%3A%5C%5C_Projects%5C%5CSentinal-Voice-Assistant%5C%5Cfrontend%5C%5Capp%5C%5C(chat)%5C%5Cactions.ts%22%2C%5B%22deleteTrailingMessages%22%5D%5D%5D&__client_imported__=true!"
@@ -22,5 +22,5 @@
     }
   },
   "edge": {},
-  "encryptionKey": "u7i66i0UKMEKeZWHxx5dDqg1fS7PNwGTTHIEDGmKYvU="
+  "encryptionKey": "wwpbfm/sFxV/kV4umhb8zGDgpGV7oh8QhK942X8mRnA="
 }

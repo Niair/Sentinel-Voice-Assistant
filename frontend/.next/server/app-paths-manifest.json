@@ -1,4 +1,6 @@
 {
+  "/not-found": "app/not-found.js",
   "/(chat)/chat/[id]/page": "app/(chat)/chat/[id]/page.js",
-  "/page": "app/page.js"
+  "/page": "app/page.js",
+  "/api/history/route": "app/api/history/route.js"
 }
