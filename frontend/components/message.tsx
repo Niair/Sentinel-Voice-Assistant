@@ -111,7 +111,7 @@ const PurePreviewMessage = ({
             </div>
           )}
 
-          {(!message.parts || message.parts.length === 0) && message.content && (
+          {((!message.parts || message.parts.length === 0) || (message.role === 'assistant' && message.parts.every(p => p.type === 'text' && !(p as any).text?.trim()))) && message.content && (
             <div key="content-fallback">
               <MessageContent
                 className={cn("w-fit px-4 py-2.5 shadow-sm transition-all", {
@@ -121,9 +121,9 @@ const PurePreviewMessage = ({
                     message.role === "assistant",
                 })}
               >
-                <div className={cn("prose dark:prose-invert whitespace-pre-wrap font-sans", message.role === "user" && "text-white")}
-                >
-                  {sanitizeText(message.content)}</div>
+                <div className={cn("prose dark:prose-invert whitespace-pre-wrap font-sans", message.role === "user" && "text-white")}>
+                  {sanitizeText(message.content)}
+                </div>
               </MessageContent>
             </div>
           )}
@@ -134,6 +134,11 @@ const PurePreviewMessage = ({
 
             if (process.env.NODE_ENV === 'development') {
               console.log(`Part ${index} for ${message.id}:`, { type, keys: Object.keys(part), text: (part as any).text?.slice(0, 20) });
+            }
+
+            // Structural markers from ai 6 stream (start-step → step-start part); no user-visible content
+            if (type === "step-start" || type === "step-end") {
+              return null;
             }
 
             if (type === "reasoning") {

@@ -1,11 +1,23 @@
 import json
 import os
+import time
 from fastapi import FastAPI, Request, File, UploadFile, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, ToolMessage
 from app.graph import get_chatbot, process_document, get_rag_status
+
+# #region agent log
+_DEBUG_LOG_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".cursor", "debug.log"))
+
+def _debug_log(obj: dict) -> None:
+    try:
+        with open(_DEBUG_LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(json.dumps({**obj, "timestamp": int(time.time() * 1000), "sessionId": "debug-session"}) + "\n")
+    except Exception:
+        pass
+# #endregion
 
 app = FastAPI(title="Sentinel AI Backend")
 
@@ -81,8 +93,11 @@ async def chat(request: ChatRequest):
     lc_messages = []
     for m in request.messages:
         if m.role == "user":
-            if file_processed:
-                lc_messages.append(SystemMessage(content=f"[File {attachment.get('name')} is now available for RAG queries]"))
+            if file_processed and last_message and last_message.attachments:
+                for att in last_message.attachments:
+                    if att.get("name", "").lower().endswith(".pdf"):
+                        lc_messages.append(SystemMessage(content=f"[File {att.get('name', 'file')} is now available for RAG queries]"))
+                        break
             lc_messages.append(HumanMessage(content=m.content))
         elif m.role == "assistant":
             lc_messages.append(AIMessage(content=m.content))
@@ -95,17 +110,40 @@ async def chat(request: ChatRequest):
         }
     }
 
+    def _normalize_content(raw) -> str:
+        """Ensure content is a string. LangChain chunk.content can be str or list of blocks."""
+        if raw is None:
+            return ""
+        if isinstance(raw, str):
+            return raw
+        if isinstance(raw, list):
+            parts = []
+            for b in raw:
+                if isinstance(b, dict):
+                    t = b.get("text") or b.get("content")
+                    if t is not None:
+                        parts.append(str(t))
+            return "".join(parts)
+        return str(raw)
+
     async def stream_generator(lc_messages):
+        first_text = True
         try:
             async for event in chatbot.astream_events(
                 {"messages": lc_messages}, config, version="v2"
             ):
                 kind = event["event"]
-                
+
                 # Text streaming
                 if kind == "on_chat_model_stream":
-                    content = event["data"]["chunk"].content
+                    raw = event["data"]["chunk"].content
+                    content = _normalize_content(raw)
                     if content:
+                        # #region agent log
+                        if first_text:
+                            _debug_log({"location": "backend:stream", "message": "first 0: chunk", "data": {"contentLen": len(content)}, "hypothesisId": "H6"})
+                            first_text = False
+                        # #endregion
                         yield f"0:{json.dumps(content)}\n"
                 
                 # Tool calls
@@ -133,6 +171,9 @@ async def chat(request: ChatRequest):
                     yield f"a:{json.dumps(payload)}\n"
                     
         except Exception as e:
+            # #region agent log
+            _debug_log({"location": "backend:stream", "message": "stream error", "data": {"error": str(e)}, "hypothesisId": "H6"})
+            # #endregion
             print(f"Stream error: {e}")
             # ✅ FIX: Send error as complete assistant message
             error_msg = f"I encountered an error: {str(e)}. Please try rephrasing your question."

@@ -4,6 +4,14 @@ import { useChat } from "@ai-sdk/react";
 // import { DefaultChatTransport } from "ai";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+
+const DEBUG_INGEST = (loc: string, msg: string, data: Record<string, unknown>, hypothesisId: string) => {
+  fetch("http://127.0.0.1:7242/ingest/14f1a9ab-2179-403b-9591-0943f6eaab41", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ location: loc, message: msg, data, timestamp: Date.now(), sessionId: "debug-session", hypothesisId }),
+  }).catch(() => {});
+};
 import useSWR, { useSWRConfig } from "swr";
 import { unstable_serialize } from "swr/infinite";
 import { ChatHeader } from "@/components/chat-header";
@@ -99,13 +107,22 @@ export function Chat({
     streamProtocol: "data",
 
     onData: (dataPart) => {
+      // #region agent log
+      DEBUG_INGEST("chat.tsx:onData", "STREAM onData", { keys: Object.keys(dataPart || {}) }, "H3");
+      // #endregion
       console.log("STREAM onData:", dataPart);
       setDataStream((ds) => (ds ? [...ds, dataPart] : []));
     },
     onFinish: () => {
+      // #region agent log
+      DEBUG_INGEST("chat.tsx:onFinish", "onFinish called", {}, "H5");
+      // #endregion
       setMessages((prev) => prev.map(m => ({ ...m })));
     },
     onError: (error) => {
+      // #region agent log
+      DEBUG_INGEST("chat.tsx:onError", "onError", { msg: String((error as Error)?.message) }, "H3");
+      // #endregion
       if (error instanceof ChatSDKError) {
         if (
           error.message?.includes("AI Gateway requires a valid credit card")
@@ -139,6 +156,17 @@ export function Chat({
     resumeStream,
     setMessages,
   });
+
+  // #region agent log
+  useEffect(() => {
+    DEBUG_INGEST("chat.tsx:messages", "messages changed", {
+      len: messages.length,
+      lastRole: messages[messages.length - 1]?.role,
+      lastId: messages[messages.length - 1]?.id,
+      status,
+    }, "H1");
+  }, [messages, status]);
+  // #endregion
 
   return (
     <>

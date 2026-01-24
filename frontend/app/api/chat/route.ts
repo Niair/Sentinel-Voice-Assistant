@@ -1,6 +1,14 @@
+import { appendFileSync } from 'fs';
 import { getChatById, getMessageById, saveChat, saveMessages, ensureGuestUserExists, updateChatTitleById } from '@/lib/db/queries';
 import { generateUUID, getTextFromMessage } from '@/lib/utils';
 import { Message } from 'ai';
+
+const DEBUG_LOG_PATH = 'e:\\_Projects\\Sentinal-Voice-Assistant\\.cursor\\debug.log';
+function debugLog(obj: Record<string, unknown>) {
+  try {
+    appendFileSync(DEBUG_LOG_PATH, JSON.stringify({ ...obj, timestamp: Date.now(), sessionId: 'debug-session' }) + '\n');
+  } catch {}
+}
 
 function getMessageText(message: Message) {
   return String(getTextFromMessage(message as any) || message.content || '');
@@ -28,6 +36,69 @@ async function saveMessageIfMissing(message: Message, chatId: string) {
   });
 }
 
+/**
+ * Transform backend stream from Vercel AI SDK v1 (0:"chunk"\n) to SSE (data: {...}\n\n).
+ * parseJsonEventStream uses EventSourceParserStream, which only parses SSE, not raw NDJSON.
+ */
+function transformVercelDataStreamToAi6(stream: ReadableStream<Uint8Array>): ReadableStream<Uint8Array> {
+  const encoder = new TextEncoder();
+  const format = (obj: object) => `data: ${JSON.stringify(obj)}\n\n`;
+  let buffer = '';
+  let textId: string | null = null;
+  let emittedStart = false;
+  let emittedStartStep = false;
+  let textDeltaCount = 0;
+
+  return stream.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
+    transform(chunk, controller) {
+      buffer += new TextDecoder().decode(chunk, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
+      for (const line of lines) {
+        if (line.length === 0) continue;
+        const m = line.match(/^0:(.*)$/);
+        if (m) {
+          try {
+            const value = JSON.parse(m[1]);
+            const delta = typeof value === 'string' ? value : String((value as { content?: string })?.content ?? '');
+            if (!textId) textId = generateUUID();
+            if (!emittedStartStep) {
+              controller.enqueue(encoder.encode(format({ type: 'start-step' })));
+              emittedStartStep = true;
+              debugLog({ location: 'route:transform', message: 'start-step', hypothesisId: 'H6' });
+            }
+            if (!emittedStart) {
+              controller.enqueue(encoder.encode(format({ type: 'text-start', id: textId })));
+              emittedStart = true;
+              debugLog({ location: 'route:transform', message: 'text-start', data: { id: textId }, hypothesisId: 'H6' });
+            }
+            if (delta.length > 0) {
+              controller.enqueue(encoder.encode(format({ type: 'text-delta', id: textId, delta })));
+              textDeltaCount++;
+              if (textDeltaCount === 1) {
+                debugLog({ location: 'route:transform', message: 'text-delta', data: { deltaLen: delta.length }, hypothesisId: 'H6' });
+              }
+            }
+          } catch {
+            // ignore malformed 0: lines
+          }
+        }
+      }
+    },
+    flush(controller) {
+      if (textId != null && emittedStart) {
+        controller.enqueue(encoder.encode(format({ type: 'text-end', id: textId })));
+        debugLog({ location: 'route:transform', message: 'text-end', data: { textDeltaCount }, hypothesisId: 'H6' });
+      }
+      if (emittedStartStep) {
+        controller.enqueue(encoder.encode(format({ type: 'finish-step' })));
+        controller.enqueue(encoder.encode(format({ type: 'finish', finishReason: 'stop' })));
+        debugLog({ location: 'route:transform', message: 'finish-step+finish', hypothesisId: 'H6' });
+      }
+    },
+  }));
+}
+
 // FIXED: Simplified stream parser that correctly handles Vercel AI SDK format
 async function collectAssistantData(stream: ReadableStream<Uint8Array>) {
   const reader = stream.getReader();
@@ -41,45 +112,23 @@ async function collectAssistantData(stream: ReadableStream<Uint8Array>) {
       if (done) break;
 
       buffer += decoder.decode(value, { stream: true });
-      let newlineIndex = buffer.indexOf('\n');
+      let lines = buffer.split('\n');
+      buffer = lines.pop() || '';
 
-      while (newlineIndex !== -1) {
-        const line = buffer.slice(0, newlineIndex);
-        buffer = buffer.slice(newlineIndex + 1);
-
-        // Parse Vercel AI SDK streaming format
+      for (const line of lines) {
         if (line.startsWith('0:')) {
-          const payload = line.slice(2).trim();
           try {
-            const parsed = JSON.parse(payload);
-            // Handle both string and object formats
-            if (typeof parsed === 'string') {
-              text += parsed;
-            } else if (parsed?.content) {
-              text += parsed.content;
-            }
+            const payload = JSON.parse(line.slice(2));
+            text += typeof payload === 'string' ? payload : (payload?.content || '');
           } catch {
-            // Fallback for unescaped strings
-            text += payload.replace(/^"|"$/g, '');
+            text += line.slice(2).replace(/^"|"$/g, '');
           }
         }
-
-        newlineIndex = buffer.indexOf('\n');
-      }
-    }
-
-    // Handle any remaining buffer
-    if (buffer.trim()) {
-      if (buffer.startsWith('0:')) {
-        const payload = buffer.slice(2).trim();
-        text += payload.replace(/^"|"$/g, '');
       }
     }
   } catch (error) {
     console.error('Stream reading error:', error);
-    text = "I encountered an error while reading the response. Please try again.";
   }
-
   return { text };
 }
 
@@ -160,7 +209,7 @@ export async function POST(req: Request) {
   console.log('Got successful response from AI backend, piping stream for ID:', id);
 
   // Split stream for client response and background processing
-  const [clientStream, storageStream] = response.body.tee();
+  const [finalStream, storageStream] = response.body.tee();
 
   // Process assistant response in background
   void (async () => {
@@ -190,12 +239,12 @@ export async function POST(req: Request) {
     }
   })();
 
+  const clientStream = transformVercelDataStreamToAi6(finalStream);
+
   return new Response(clientStream, {
     headers: {
-      'Content-Type': 'text/plain; charset=utf-8',
+      'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache, no-transform',
-      'Connection': 'keep-alive',
-      'X-Content-Type-Options': 'nosniff',
       'X-Vercel-AI-Data-Stream': 'v1',
     },
   });
