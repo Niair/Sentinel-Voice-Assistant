@@ -207,33 +207,37 @@ function PureMultimodalInput({
       if (response.ok) {
         const data = await response.json();
         const { url, pathname, contentType } = data;
-
-        return {
-          url,
-          name: pathname,
-          contentType,
-        };
+        if (!url || !pathname || !contentType) {
+          toast.error("Upload response missing required fields");
+          return undefined;
+        }
+        return { url, name: pathname, contentType };
       }
-      const { error } = await response.json();
-      toast.error(error);
+      let errorMsg = "Upload failed";
+      try {
+        const errorData = await response.json();
+        errorMsg = errorData.error ?? errorMsg;
+      } catch {
+        errorMsg = `Upload failed with status ${response.status}`;
+      }
+      toast.error(errorMsg);
+      return undefined;
     } catch (_error) {
       toast.error("Failed to upload file, please try again!");
+      return undefined;
     }
-  }, []);
+  }, [chatId]);
 
   const handleFileChange = useCallback(
     async (event: ChangeEvent<HTMLInputElement>) => {
       const files = Array.from(event.target.files || []);
-
       setUploadQueue(files.map((file) => file.name));
-
       try {
         const uploadPromises = files.map((file) => uploadFile(file));
         const uploadedAttachments = await Promise.all(uploadPromises);
         const successfullyUploadedAttachments = uploadedAttachments.filter(
           (attachment) => attachment !== undefined
         );
-
         setAttachments((currentAttachments) => [
           ...currentAttachments,
           ...successfullyUploadedAttachments,

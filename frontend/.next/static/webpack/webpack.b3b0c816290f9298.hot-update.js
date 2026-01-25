@@ -51,6 +51,15 @@ self["webpackHotUpdate_N_E"]("webpack",{},
 /******/ 	};
 /******/ }();
 /******/ 
+/******/ /* webpack/runtime/get javascript chunk filename */
+/******/ !function() {
+/******/ 	// This function allow to reference async chunks
+/******/ 	__webpack_require__.u = function(chunkId) {
+/******/ 		// return url for filenames based on template
+/******/ 		return "static/chunks/" + chunkId + ".js";
+/******/ 	};
+/******/ }();
+/******/ 
 /******/ /* webpack/runtime/get mini-css chunk filename */
 /******/ !function() {
 /******/ 	// This function allow to reference all chunks
@@ -62,7 +71,7 @@ self["webpackHotUpdate_N_E"]("webpack",{},
 /******/ 
 /******/ /* webpack/runtime/getFullHash */
 /******/ !function() {
-/******/ 	__webpack_require__.h = function() { return "3b11465156ff3651"; }
+/******/ 	__webpack_require__.h = function() { return "e9ff2ca588933fe0"; }
 /******/ }();
 /******/ 
 /******/ /* webpack/runtime/nonce */

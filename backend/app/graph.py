@@ -1,6 +1,5 @@
 import os
 import json
-import asyncio
 import contextvars
 from typing import TypedDict, Annotated, Optional, List, Dict
 from langchain_groq import ChatGroq
@@ -15,8 +14,9 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode, tools_condition
 from langchain_community.tools import DuckDuckGoSearchRun
-from langchain_mcp_adapters.client import MultiServerMCPClient
 from langgraph.store.base import BaseStore
+
+from app.mcp import SafeMCPClient
 from langgraph.store.postgres import PostgresStore
 from dotenv import load_dotenv
 
@@ -47,21 +47,20 @@ _doc_info_by_thread: Dict[str, Dict[str, object]] = {}
 _current_thread_id = contextvars.ContextVar("current_thread_id", default="default_thread")
 
 # --- Tools ---
-# ✅ FIX: Wrap search tool to prevent cancellation
-class SafeSearchTool:
-    def __init__(self):
-        self.search = DuckDuckGoSearchRun(region="us-en")
-    
-    def __call__(self, query: str) -> str:
-        try:
-            # Add timeout to prevent hanging
-            return asyncio.wait_for(self.search.ainvoke(query), timeout=10.0)
-        except asyncio.TimeoutError:
-            return "Search timed out. Please try a more specific query."
-        except Exception as e:
-            return f"Search failed: {str(e)}"
+_ddg = DuckDuckGoSearchRun(region="us-en")
 
-search_tool = SafeSearchTool()
+
+@tool
+def search_tool(query: str) -> str:
+    """
+    Search the internet for current information.
+    Use when the user asks about recent events, facts, news, or general knowledge.
+    """
+    try:
+        return _ddg.invoke(query)
+    except Exception as e:
+        return f"Search failed: {str(e)}"
+
 
 @tool
 def rag_tool(query: str) -> dict:
@@ -106,26 +105,7 @@ def rag_tool(query: str) -> dict:
 class ChatState(TypedDict):
     messages: Annotated[list[BaseMessage], add_messages]
 
-# --- MCP Client (Safe Initialization) ---
-class SafeMCPClient:
-    def __init__(self):
-        self._client = None
-        self._tools = []
-    
-    async def initialize(self):
-        """Initialize MCP client safely"""
-        try:
-            # ✅ FIX: Disable MCP for now (causing cancellation errors)
-            # self._client = MultiServerMCPClient(SERVERS)
-            # self._tools = await self._client.get_tools()
-            self._tools = []  # Start with no MCP tools
-        except Exception as e:
-            print(f"⚠️ MCP client failed to initialize: {e}")
-            self._tools = []
-    
-    def get_tools(self):
-        return self._tools
-
+# --- MCP Client ---
 _mcp_client = SafeMCPClient()
 
 # --- RAG Logic ---
@@ -162,7 +142,7 @@ def process_document(pdf_path: str, thread_id: str = "default_thread"):
             retriever = vector_store.as_retriever(search_type="similarity", search_kwargs={"k": 4})
             print("✅ PGVector store created")
         except Exception as pg_error:
-            print(f"⚠️ PGVector failed, using fallback: {pg_error}")
+            print(f"⚠️ PGVector failed, using FAISS fallback: {pg_error}")
             from langchain_community.vectorstores import FAISS
             vector_store = FAISS.from_documents(chunks, embeddings)
             retriever = vector_store.as_retriever(search_type="similarity", search_kwargs={"k": 4})
@@ -237,7 +217,7 @@ async def agent(state: ChatState, config: RunnableConfig, store: BaseStore):
     )
     
     # ✅ FIX: Safe tool initialization
-    static_tools = [rag_tool]  # Remove search_tool for now
+    static_tools = [rag_tool, search_tool]
     try:
         if not _mcp_client.get_tools():  # Initialize if not already
             await _mcp_client.initialize()
@@ -289,14 +269,14 @@ async def safe_tool_node(state: ChatState) -> ChatState:
     """Wrapper around tool node to ensure all tool messages have content and handle errors"""
     try:
         # Get available tools
-        static_tools = [rag_tool]
+        static_tools = [rag_tool, search_tool]
         try:
             if not _mcp_client.get_tools():
                 await _mcp_client.initialize()
             all_tools = static_tools + _mcp_client.get_tools()
-        except:
+        except Exception:
             all_tools = static_tools
-        
+
         tool_node = ToolNode(all_tools)
         result = await tool_node.ainvoke(state)
         
