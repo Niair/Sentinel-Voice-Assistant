@@ -213,6 +213,8 @@ You have access to the following tools:
 3. DO NOT make up data - if you used a tool and got results, use those results
 4. If a tool returns "no data" or empty results, say so clearly - don't hallucinate
 5. After using a tool, provide a direct answer based on the tool's output
+6. **IMPORTANT**: For expense tools, always use NUMBERS for amounts (e.g., 50, not "50")
+7. **IMPORTANT**: For date parameters, use YYYY-MM-DD format (e.g., "2024-01-15") or "today"
 
 Always provide helpful, accurate, factual responses based on tool results.
 """
@@ -326,6 +328,56 @@ async def agent(state: ChatState, config: RunnableConfig, store: BaseStore):
     except Exception as e:
         error_msg = str(e)
         print(f"❌ Error in LLM invocation: {error_msg}")
+        
+        # ✅ FIX: If tool validation fails, try to fix the parameters and retry
+        if "tool call validation failed" in error_msg and "expected number, but got string" in error_msg:
+            print(f"🔧 Attempting to fix tool parameter types and retry...")
+            try:
+                # Get the last user message to extract the intent
+                last_user_msg = None
+                for msg in reversed(validated_messages):
+                    if hasattr(msg, 'type') and msg.type == 'human':
+                        last_user_msg = msg.content
+                        break
+                
+                if last_user_msg and any(keyword in last_user_msg.lower() for keyword in ['expense', 'add', 'cost']):
+                    # Extract amount from the message using regex
+                    import re
+                    amount_match = re.search(r'\b(\d+(?:\.\d+)?)\b', last_user_msg)
+                    if amount_match:
+                        amount = float(amount_match.group(1))
+                        
+                        # Extract description (everything after amount or before amount)
+                        description_parts = re.split(r'\b\d+(?:\.\d+)?\b', last_user_msg)
+                        description = ' '.join(description_parts).strip()
+                        description = re.sub(r'\b(add|expense|for|the|today|of)\b', '', description, flags=re.IGNORECASE).strip()
+                        if not description:
+                            description = "expense"
+                        
+                        # Get today's date
+                        from datetime import datetime
+                        today = datetime.now().strftime('%Y-%m-%d')
+                        
+                        # Create a direct tool call message
+                        from langchain_core.messages import AIMessage
+                        tool_call_msg = AIMessage(
+                            content="I'll add that expense for you.",
+                            tool_calls=[{
+                                "name": "add_expense",
+                                "args": {
+                                    "amount": amount,
+                                    "description": description,
+                                    "date": today,
+                                    "category": "general"
+                                },
+                                "id": "manual_expense_add"
+                            }]
+                        )
+                        print(f"🔧 Created manual tool call: amount={amount}, description='{description}'")
+                        return {"messages": [tool_call_msg]}
+            except Exception as retry_error:
+                print(f"❌ Manual tool call creation failed: {retry_error}")
+        
         # ✅ FIX: If Groq rejects function calling, retry without tools
         if "Failed to call a function" in error_msg or "function" in error_msg.lower():
             print(f"⚠️ Function calling failed, retrying without tools...")
@@ -358,6 +410,43 @@ async def safe_tool_node(state: ChatState, config: RunnableConfig) -> ChatState:
         except Exception as e:
             print(f"⚠️ MCP tools unavailable in tool node: {e}")
             all_tools = static_tools
+        
+        # ✅ FIX: Validate and fix tool call parameters before execution
+        if 'messages' in state and state['messages']:
+            last_msg = state['messages'][-1]
+            if hasattr(last_msg, 'tool_calls') and last_msg.tool_calls:
+                for tool_call in last_msg.tool_calls:
+                    tool_name = tool_call.get('name', '')
+                    args = tool_call.get('args', {})
+                    
+                    # Fix common parameter type issues for MCP tools
+                    if tool_name == 'add_expense':
+                        if 'amount' in args and isinstance(args['amount'], str):
+                            try:
+                                # Convert string amount to float
+                                args['amount'] = float(args['amount'])
+                                print(f"🔧 Fixed add_expense amount: '{args['amount']}' -> {args['amount']}")
+                            except ValueError:
+                                print(f"⚠️ Could not convert amount '{args['amount']}' to number")
+                    
+                    elif tool_name in ['list_expenses', 'summarize', 'net_cashflow']:
+                        # Fix date parameters if they're malformed
+                        for date_param in ['start_date', 'end_date', 'date']:
+                            if date_param in args and isinstance(args[date_param], str):
+                                # Ensure date is in YYYY-MM-DD format
+                                date_str = args[date_param]
+                                if date_str and not date_str.count('-') == 2:
+                                    # Try to fix common date formats
+                                    from datetime import datetime
+                                    try:
+                                        if date_str.lower() == 'today':
+                                            args[date_param] = datetime.now().strftime('%Y-%m-%d')
+                                        elif '/' in date_str:
+                                            # Convert MM/DD/YYYY to YYYY-MM-DD
+                                            dt = datetime.strptime(date_str, '%m/%d/%Y')
+                                            args[date_param] = dt.strftime('%Y-%m-%d')
+                                    except:
+                                        pass
         
         tool_node = ToolNode(all_tools)
         
