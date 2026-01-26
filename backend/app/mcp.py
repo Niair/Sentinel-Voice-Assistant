@@ -18,7 +18,8 @@ SERVERS = {
         "cwd": r"E:\_Projects\GAIP\MCP\chat_bot_with_mcp",
     },
     "expense": {
-        "transport": "sse",
+        # ✅ FIX BUG 2: Use streamable_http for FastMCP Cloud (not sse)
+        "transport": "streamable_http",
         "url": "https://nihal-finance-server.fastmcp.app/mcp",
     },
 }
@@ -34,10 +35,16 @@ class SafeMCPClient:
     async def initialize(self) -> None:
         """Initialize MCP client; on failure, keep _tools empty."""
         try:
+            print("🔌 Initializing MCP client...")
             self._client = MultiServerMCPClient(connections=SERVERS)
             self._tools = await self._client.get_tools()
+            print(f"✅ MCP client initialized with {len(self._tools)} tools:")
+            for tool in self._tools:
+                print(f"   - {tool.name}: {tool.description[:80]}...")
         except Exception as e:
             print(f"⚠️ MCP client failed to initialize: {e}")
+            import traceback
+            traceback.print_exc()
             self._client = None
             self._tools = []
 

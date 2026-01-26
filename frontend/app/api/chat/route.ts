@@ -39,6 +39,11 @@ async function saveMessageIfMissing(message: Message, chatId: string) {
 /**
  * Transform backend stream from Vercel AI SDK v1 (0:"chunk"\n) to SSE (data: {...}\n\n).
  * parseJsonEventStream uses EventSourceParserStream, which only parses SSE, not raw NDJSON.
+ * 
+ * Stream format from backend:
+ * - 0:"text" - text chunks
+ * - 9:{toolCallId, toolName, args} - tool start
+ * - a:{toolCallId, result} - tool end
  */
 function transformVercelDataStreamToAi6(stream: ReadableStream<Uint8Array>): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
@@ -48,14 +53,68 @@ function transformVercelDataStreamToAi6(stream: ReadableStream<Uint8Array>): Rea
   let emittedStart = false;
   let emittedStartStep = false;
   let textDeltaCount = 0;
+  // ✅ FIX BUG 4: Track tool calls for proper UI rendering
+  const activeToolCalls: Map<string, { toolName: string; args: unknown }> = new Map();
 
   return stream.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
     transform(chunk, controller) {
       buffer += new TextDecoder().decode(chunk, { stream: true });
       const lines = buffer.split('\n');
       buffer = lines.pop() ?? '';
+      
       for (const line of lines) {
         if (line.length === 0) continue;
+        
+        // ✅ FIX BUG 4: Handle tool start events (9:)
+        const toolStartMatch = line.match(/^9:(.*)$/);
+        if (toolStartMatch) {
+          try {
+            const payload = JSON.parse(toolStartMatch[1]) as { toolCallId: string; toolName: string; args: unknown };
+            activeToolCalls.set(payload.toolCallId, { toolName: payload.toolName, args: payload.args });
+            
+            // Emit step start if not already
+            if (!emittedStartStep) {
+              controller.enqueue(encoder.encode(format({ type: 'start-step' })));
+              emittedStartStep = true;
+            }
+            
+            // Emit tool-call event for ai-sdk
+            controller.enqueue(encoder.encode(format({
+              type: 'tool-call',
+              toolCallId: payload.toolCallId,
+              toolName: payload.toolName,
+              args: payload.args
+            })));
+            
+            debugLog({ location: 'route:transform', message: 'tool-call', data: { toolName: payload.toolName }, hypothesisId: 'BUG4' });
+          } catch {
+            // ignore malformed tool start
+          }
+          continue;
+        }
+        
+        // ✅ FIX BUG 4: Handle tool end events (a:)
+        const toolEndMatch = line.match(/^a:(.*)$/);
+        if (toolEndMatch) {
+          try {
+            const payload = JSON.parse(toolEndMatch[1]) as { toolCallId: string; result: unknown };
+            
+            // Emit tool-result event
+            controller.enqueue(encoder.encode(format({
+              type: 'tool-result',
+              toolCallId: payload.toolCallId,
+              result: payload.result
+            })));
+            
+            activeToolCalls.delete(payload.toolCallId);
+            debugLog({ location: 'route:transform', message: 'tool-result', data: { toolCallId: payload.toolCallId }, hypothesisId: 'BUG4' });
+          } catch {
+            // ignore malformed tool end
+          }
+          continue;
+        }
+        
+        // Handle text chunks (0:)
         const m = line.match(/^0:(.*)$/);
         if (m) {
           try {

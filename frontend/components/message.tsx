@@ -141,6 +141,48 @@ const PurePreviewMessage = ({
               return null;
             }
 
+            // ✅ FIX BUG 4: Handle generic tool-call parts (search_tool, rag_tool, MCP tools)
+            if (type === "tool-call") {
+              const { toolCallId, toolName, args } = part as { toolCallId: string; toolName: string; args: unknown };
+              return (
+                <div className="w-full" key={toolCallId || key}>
+                  <Tool className="w-full" defaultOpen={true}>
+                    <ToolHeader state="input-available" type={`tool-${toolName}`} />
+                    <ToolContent>
+                      <div className="px-4 py-3">
+                        <div className="text-sm font-medium text-muted-foreground mb-2">
+                          Using {toolName}...
+                        </div>
+                        {args && (
+                          <ToolInput input={args as Record<string, unknown>} />
+                        )}
+                      </div>
+                    </ToolContent>
+                  </Tool>
+                </div>
+              );
+            }
+
+            // ✅ FIX BUG 4: Handle tool-result parts
+            if (type === "tool-result") {
+              const { toolCallId, result } = part as { toolCallId: string; result: unknown };
+              const resultStr = typeof result === 'string' ? result : JSON.stringify(result, null, 2);
+              return (
+                <div className="w-full" key={`result-${toolCallId || key}`}>
+                  <Tool className="w-full" defaultOpen={false}>
+                    <ToolHeader state="output-available" type="tool-result" />
+                    <ToolContent>
+                      <div className="px-4 py-3 text-sm">
+                        <pre className="whitespace-pre-wrap text-xs bg-muted p-2 rounded max-h-40 overflow-auto">
+                          {resultStr.slice(0, 500)}{resultStr.length > 500 ? '...' : ''}
+                        </pre>
+                      </div>
+                    </ToolContent>
+                  </Tool>
+                </div>
+              );
+            }
+
             if (type === "reasoning") {
               const hasContent = part.text?.trim().length > 0;
               const isStreaming = "state" in part && part.state === "streaming";

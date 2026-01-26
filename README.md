@@ -40,6 +40,3 @@ git reset --hard 5df35df
 
 # 2. Force push to update the remote (WARNING: This rewrites history)
 git push -f origin main
-
-# Note: Only do this if you're the only one working on this branch
-# and haven't shared the sen-6.2x commit with others
