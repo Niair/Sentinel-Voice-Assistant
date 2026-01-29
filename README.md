@@ -40,3 +40,22 @@ git reset --hard 5df35df
 
 # 2. Force push to update the remote (WARNING: This rewrites history)
 git push -f origin main
+
+-----------------------------------------------------------------------------------
+
+# If Postgres is running in Docker
+docker exec -i sentinel-postgres psql -U postgres -d postgres < create_monitoring_tables.sql
+
+# Or directly with psql
+psql -U postgres -d postgres -f create_monitoring_tables.sql
+
+docker exec -it sentinel-postgres psql -U postgres -d postgres
+\dt monitoring_*
+
+-- Should show:
+-- monitoring_jobs
+-- monitoring_events  
+-- monitoring_alerts
+
+-----------------------------------------------------------------------------------
+
