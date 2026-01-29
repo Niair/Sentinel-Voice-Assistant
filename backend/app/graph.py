@@ -134,7 +134,15 @@ def process_document(pdf_path: str, thread_id: str = "default_thread"):
         
         # ✅ FIX: Use a simpler in-memory approach if PGVector fails
         try:
-            embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
+            # ✅ FIX: Explicitly pass API key from env (GEMINI_API_KEY or GOOGLE_API_KEY)
+            google_api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+            if not google_api_key:
+                print("⚠️ No Google API key found in environment!")
+            
+            embeddings = GoogleGenerativeAIEmbeddings(
+                model="models/text-embedding-004", 
+                google_api_key=google_api_key
+            )
             collection_name = f"sentinel_thread_{thread_id}"
             vector_store = PGVector.from_documents(
                 documents=chunks,
@@ -207,16 +215,21 @@ You have access to the following tools:
 3. **MCP Tools** (Finance & Expense Tracking):
 {available_tools}
 
-**CRITICAL RULES:**
-1. When you call a tool, WAIT for the result and USE IT in your answer
-2. DO NOT call the same tool multiple times for the same question
-3. DO NOT make up data - if you used a tool and got results, use those results
-4. If a tool returns "no data" or empty results, say so clearly - don't hallucinate
-5. After using a tool, provide a direct answer based on the tool's output
-6. **IMPORTANT**: For expense tools, always use NUMBERS for amounts (e.g., 50, not "50")
-7. **IMPORTANT**: For date parameters, use YYYY-MM-DD format (e.g., "2024-01-15") or "today"
+**CRITICAL RULES - READ CAREFULLY:**
+1. **ONE TOOL CALL PER TURN**: Do not chain multiple tool calls unless absolutely necessary.
+2. **STOP AND ANSWER**: As soon as you get a result from a tool (like `add_expense` or `list_expenses`), STOP calling tools and provide a final answer to the user.
+3. **DO NOT SUMMARIZE UNASKED**: If you added an expense, just say "Added". Do NOT call `list_expenses` or `net_cashflow` automatically unless the user explicitly asked for a summary.
+4. **TRUST THE TOOL OUTPUT**: If a tool returns "success" or data, assume it worked. Do not check it again.
+5. **FINANCE FORMAT**: Always use NUMBERS for amounts (e.g., 50, not "50") and YYYY-MM-DD for dates.
+
+**Example Workflow:**
+- User: "Add expense 50 for food"
+- You: Call `add_expense(amount=50, ...)`
+- Tool Output: "Expense added"
+- You: "I've added the expense of 50 for food." (STOP HERE, do not call list_expenses)
 
 Always provide helpful, accurate, factual responses based on tool results.
+
 """
 
 # ✅ FIX: Safe agent execution with error handling

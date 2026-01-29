@@ -99,7 +99,10 @@ async def process_document_endpoint(file: UploadFile = File(...), thread_id: str
             "message": "Document processed successfully"
         }
     else:
-        raise HTTPException(500, detail=f"Failed to process document: {result.get('error')}")
+        error_msg = result.get('error', 'Unknown error')
+        print(f"❌ Document processing failed: {error_msg}")
+        _debug_log({"location": "backend:upload", "message": "process failure", "data": {"error": error_msg}, "hypothesisId": "RAG_FIX"})
+        raise HTTPException(500, detail=f"Failed to process document: {error_msg}")
 
 
 @app.get("/api/rag-status")

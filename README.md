@@ -59,3 +59,12 @@ docker exec -it sentinel-postgres psql -U postgres -d postgres
 
 -----------------------------------------------------------------------------------
 
+backend logs:
+
+backend> set PYTHONPATH=. && python tests\test_event_bus.py
+
+-----------------------------------------------------------------------------------
+
+test:
+
+backend> set PYTHONPATH=. && python tests/test_database_connection.py
