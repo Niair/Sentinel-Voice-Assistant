@@ -6,7 +6,7 @@ from langchain_groq import ChatGroq
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_community.document_loaders import PyMuPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_postgres import PGVector
+# from langchain_postgres import PGVector
 from langchain_core.tools import tool
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
@@ -15,6 +15,7 @@ from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode, tools_condition
 from langchain_community.tools import DuckDuckGoSearchRun
 from langgraph.store.base import BaseStore
+from app.qdrant_manager import get_qdrant_client
 
 from app.mcp import SafeMCPClient
 from langgraph.store.postgres import PostgresStore
@@ -34,15 +35,10 @@ def _langgraph_dsn(url: str) -> str:
         .replace("postgresql+psycopg://", "postgresql://")
     )
 
-def _pgvector_conn(url: str) -> str:
-    if url.startswith("postgresql+asyncpg://"):
-        return url.replace("postgresql+asyncpg://", "postgresql+psycopg://")
-    if url.startswith("postgresql://"):
-        return url.replace("postgresql://", "postgresql+psycopg://")
-    return url
+
 
 # --- Global RAG State ---
-_retrievers_by_thread: Dict[str, object] = {}
+# _retrievers_by_thread: Dict[str, object] = {}
 _doc_info_by_thread: Dict[str, Dict[str, object]] = {}
 _current_thread_id = contextvars.ContextVar("current_thread_id", default="default_thread")
 
@@ -65,44 +61,106 @@ def search_tool(query: str) -> str:
 
 
 @tool
-def rag_tool(query: str, config: RunnableConfig = None) -> str:
+async def rag_tool(query: str, config: RunnableConfig = None) -> str:
     """
-    Retrieve relevant information from the uploaded PDF document. 
-    Use this when the user asks questions about the content of their uploaded files.
+    Retrieve relevant information from uploaded PDF documents using Qdrant vector search.
+    
+    This tool searches through indexed PDF documents to find relevant passages
+    that answer the user's question. It uses semantic search with embeddings.
+    
+    Use this when the user asks questions about:
+    - Content from their uploaded files
+    - Specific information in documents
+    - Details, facts, or quotes from PDFs
+    
+    Args:
+        query: The search query or question
+        config: Runtime configuration with thread_id
+    
+    Returns:
+        Formatted string with relevant excerpts from the document,
+        or an error message if no document is available
     """
-    # ✅ FIX BUG 3: Get thread_id from config (injected by LangGraph) or fall back to context var
+    # Get thread_id from config
     thread_id = None
     if config and "configurable" in config:
         thread_id = config["configurable"].get("thread_id")
     if not thread_id:
+        from contextvars import _current_thread_id  # Import from your existing code
         thread_id = _current_thread_id.get()
     
-    print(f"🔍 RAG tool called with thread_id: {thread_id}, query: {query}")
-    retriever = _retrievers_by_thread.get(thread_id)
+    print(f"🔍 RAG tool called - thread: {thread_id}, query: '{query[:60]}...'")
+    
+    # Check if document exists for this thread
+    from app.graph import _doc_info_by_thread  # Import from your existing code
     doc_info = _doc_info_by_thread.get(thread_id)
     
-    if retriever is None or doc_info is None:
+    if doc_info is None:
         print(f"⚠️ No document found for thread {thread_id}")
         return "No document is currently loaded. Please upload a PDF first."
     
     try:
-        docs = retriever.invoke(query)
+        # Get Qdrant client
+        qdrant_client = get_qdrant_client()
+        
+        # Initialize if needed
+        if not qdrant_client.is_available():
+            await qdrant_client.initialize()
+        
+        if not qdrant_client.is_available():
+            return "RAG system is temporarily unavailable. Please try again later."
+        
+        # Search in Qdrant collection
+        collection_name = f"sentinel_thread_{thread_id}"
+        
+        # Check if collection exists
+        if not await qdrant_client.collection_exists(collection_name):
+            return f"Document '{doc_info.get('filename')}' needs to be re-indexed. Please re-upload the file."
+        
+        # Search with better parameters
+        docs = await qdrant_client.search(
+            collection_name=collection_name,
+            query=query,
+            limit=6,  # More chunks for better context
+            score_threshold=0.3  # Lower threshold for better recall
+        )
+        
         if not docs:
-            return f"No relevant information found in {doc_info.get('filename')} for your query."
+            return (
+                f"No relevant information found in '{doc_info.get('filename')}' for your query.\n\n"
+                f"The document has {doc_info.get('chunks', 0)} indexed sections. "
+                f"Try rephrasing your question or asking about different aspects of the document."
+            )
         
+        # Format results with page numbers and relevance scores
         context_parts = []
-        for i, doc in enumerate(docs[:4], 1):
+        for i, doc in enumerate(docs, 1):
             page = doc.metadata.get('page', 'unknown')
-            context_parts.append(f"[Excerpt {i} from page {page}]:\n{doc.page_content}\n")
+            score = doc.metadata.get('score', 0.0)
+            
+            # Truncate very long chunks
+            content = doc.page_content
+            if len(content) > 500:
+                content = content[:500] + "..."
+            
+            context_parts.append(
+                f"[Excerpt {i} from page {page}, relevance: {score:.2f}]:\n{content}\n"
+            )
         
-        result = f"Found {len(docs)} relevant sections in {doc_info.get('filename')}:\n\n" + "\n".join(context_parts)
-        print(f"✅ RAG tool returning {len(result)} chars")
+        result = (
+            f"Found {len(docs)} relevant sections in '{doc_info.get('filename')}':\n\n" 
+            + "\n".join(context_parts)
+        )
+        
+        print(f"✅ RAG returning {len(result)} chars from {len(docs)} chunks")
         return result
+        
     except Exception as e:
         print(f"❌ RAG tool error: {e}")
         import traceback
         traceback.print_exc()
         return f"Error retrieving from document: {str(e)}"
+
 
 # --- State Definition ---
 class ChatState(TypedDict):
@@ -112,9 +170,26 @@ class ChatState(TypedDict):
 _mcp_client = SafeMCPClient()
 
 # --- RAG Logic ---
-def process_document(pdf_path: str, thread_id: str = "default_thread"):
-    """Process a PDF document and create a retriever"""
-    global _retrievers_by_thread, _doc_info_by_thread
+async def process_document(pdf_path: str, thread_id: str = "default_thread"):
+    """
+    Process a PDF document and index it in Qdrant for RAG.
+    
+    This function:
+    1. Loads the PDF
+    2. Splits it into chunks (800 chars with 150 overlap)
+    3. Generates embeddings using Google Gemini
+    4. Stores everything in Qdrant Cloud
+    
+    NO FAISS FALLBACK - If Qdrant fails, the function fails.
+    
+    Args:
+        pdf_path: Path to the PDF file
+        thread_id: Chat thread ID (for collection naming)
+    
+    Returns:
+        Dict with success status and document info
+    """
+    from app.graph import _doc_info_by_thread  # Import from your existing code
     
     try:
         print(f"📄 Processing document: {pdf_path}")
@@ -122,41 +197,40 @@ def process_document(pdf_path: str, thread_id: str = "default_thread"):
         # Load PDF
         loader = PyMuPDFLoader(pdf_path)
         docs = loader.load()
-        print(f"✅ Loaded {len(docs)} pages")
+        print(f"✅ Loaded {len(docs)} pages from PDF")
         
-        # Split into chunks
+        # Split into chunks - SMALLER chunks for better granularity
         splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000,
-            chunk_overlap=200
+            chunk_size=800,  # Reduced from 1000 for more precise matching
+            chunk_overlap=150,  # Reduced from 200
+            length_function=len,
+            separators=["\n\n", "\n", " ", ""]
         )
         chunks = splitter.split_documents(docs)
-        print(f"✅ Created {len(chunks)} chunks")
+        print(f"✅ Created {len(chunks)} chunks (avg ~{800//(len(chunks)/len(docs)) if chunks else 0} chars/chunk)")
         
-        # ✅ FIX: Use a simpler in-memory approach if PGVector fails
-        try:
-            # ✅ FIX: Explicitly pass API key from env (GEMINI_API_KEY or GOOGLE_API_KEY)
-            google_api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
-            if not google_api_key:
-                print("⚠️ No Google API key found in environment!")
-            
-            embeddings = GoogleGenerativeAIEmbeddings(
-                model="models/text-embedding-004", 
-                google_api_key=google_api_key
+        # Initialize Qdrant client
+        qdrant_client = get_qdrant_client()
+        await qdrant_client.initialize()
+        
+        if not qdrant_client.is_available():
+            raise Exception(
+                "Qdrant client not available.\n"
+                "Check QDRANT_URL and QDRANT_API_KEY in .env file.\n"
+                "Get free cluster at: https://cloud.qdrant.io/"
             )
-            collection_name = f"sentinel_thread_{thread_id}"
-            vector_store = PGVector.from_documents(
-                documents=chunks,
-                embedding=embeddings,
-                connection=_pgvector_conn(POSTGRES_URL),
-                collection_name=collection_name
-            )
-            retriever = vector_store.as_retriever(search_type="similarity", search_kwargs={"k": 4})
-            print("✅ PGVector store created")
-        except Exception as pg_error:
-            print(f"⚠️ PGVector failed, using FAISS fallback: {pg_error}")
-            from langchain_community.vectorstores import FAISS
-            vector_store = FAISS.from_documents(chunks, embeddings)
-            retriever = vector_store.as_retriever(search_type="similarity", search_kwargs={"k": 4})
+        
+        # Index documents in Qdrant
+        collection_name = f"sentinel_thread_{thread_id}"
+        
+        print(f"🔄 Indexing into Qdrant collection: {collection_name}")
+        result = await qdrant_client.index_documents(
+            collection_name=collection_name,
+            documents=chunks
+        )
+        
+        if not result.get("success"):
+            raise Exception(f"Failed to index documents: {result.get('error')}")
         
         # Store document info
         _current_doc_info = {
@@ -165,12 +239,17 @@ def process_document(pdf_path: str, thread_id: str = "default_thread"):
             "chunks": len(chunks),
             "path": pdf_path,
             "thread_id": thread_id,
+            "collection": collection_name,
+            "indexed_chunks": result.get("chunks_indexed", 0),
+            "rag_backend": "qdrant"  # No FAISS fallback
         }
-
-        _retrievers_by_thread[thread_id] = retriever
+        
         _doc_info_by_thread[thread_id] = _current_doc_info
         
-        print("✅ RAG system ready!")
+        print(f"✅ RAG ready! {len(chunks)} chunks indexed in Qdrant")
+        print(f"   Collection: {collection_name}")
+        print(f"   Backend: Qdrant Cloud (no local storage)")
+        
         return {
             'success': True,
             "filename": _current_doc_info["filename"],
@@ -181,6 +260,7 @@ def process_document(pdf_path: str, thread_id: str = "default_thread"):
         print(f"❌ Error processing document: {e}")
         import traceback
         traceback.print_exc()
+        
         return {
             'success': False,
             'error': str(e)
@@ -192,7 +272,7 @@ def get_rag_status(thread_id: str = "default_thread"):
     return {
         "has_document": doc_info is not None,
         "document_info": doc_info,
-        "rag_active": thread_id in _retrievers_by_thread
+        # "rag_active": thread_id in _retrievers_by_thread
     }
 
 # --- Long-term Memory Logic ---

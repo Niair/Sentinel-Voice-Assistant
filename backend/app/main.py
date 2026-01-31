@@ -45,64 +45,87 @@ app.add_middleware(
 
 @app.post("/api/upload")
 async def upload_file(file: UploadFile = File(...), thread_id: str = "default_thread"):
-    """Process uploaded PDF for RAG"""
-    if not file.filename.endswith('.pdf'):
+    """Process uploaded PDF for RAG with Qdrant"""
+    if not file.filename.lower().endswith('.pdf'):
         raise HTTPException(400, "Only PDF files are supported for RAG")
     
     upload_dir = "uploads"
     os.makedirs(upload_dir, exist_ok=True)
-    file_path = os.path.join(upload_dir, f"{thread_id}_{file.filename}")
+    safe_filename = file.filename.replace(' ', '_')
+    file_path = os.path.join(upload_dir, f"{thread_id}_{safe_filename}")
+    
+    print(f"📄 Upload received: {file.filename} for thread {thread_id}")
     
     with open(file_path, "wb") as f:
         content = await file.read()
         f.write(content)
     
-    result = process_document(file_path, thread_id)
+    # Call ASYNC process_document
+    result = await process_document(file_path, thread_id)
     
     if result.get('success'):
         return {
             "success": True,
-            "filename": result['filename'],
+            "filename": safe_filename,
             "info": result['info'],
-            "message": "Document processed successfully"
+            "message": f"Document indexed in Qdrant with {result['info'].get('chunks')} chunks"
         }
     else:
-        raise HTTPException(500, f"Failed to process document: {result.get('error')}")
+        error_msg = result.get('error', 'Unknown error')
+        print(f"❌ Document processing failed: {error_msg}")
+        raise HTTPException(500, f"Failed to process document: {error_msg}")
 
 
 # ✅ FIX BUG 3: Add endpoint that frontend expects for document processing
 @app.post("/api/process-document")
-async def process_document_endpoint(file: UploadFile = File(...), thread_id: str = "default_thread"):
+async def process_document_endpoint(
+    file: UploadFile = File(...), 
+    thread_id: str = "default_thread"
+):
     """Process uploaded PDF for RAG (frontend expects this endpoint)"""
     if not file.filename.lower().endswith('.pdf'):
         raise HTTPException(400, detail="Only PDF files are supported for RAG")
     
     upload_dir = "uploads"
     os.makedirs(upload_dir, exist_ok=True)
-    # Use just the filename without thread prefix for consistent lookups
     safe_filename = file.filename.replace(' ', '_')
     file_path = os.path.join(upload_dir, f"{thread_id}_{safe_filename}")
     
-    print(f"📄 Processing document upload: {file.filename} for thread {thread_id}")
+    print(f"📄 Processing document: {file.filename} (thread: {thread_id})")
     
+    # Save uploaded file
     with open(file_path, "wb") as f:
         content = await file.read()
         f.write(content)
     
-    result = process_document(file_path, thread_id)
+    print(f"✅ File saved: {file_path}")
     
-    if result.get('success'):
-        return {
-            "success": True,
-            "filename": safe_filename,
-            "info": result.get('info'),
-            "message": "Document processed successfully"
-        }
-    else:
-        error_msg = result.get('error', 'Unknown error')
-        print(f"❌ Document processing failed: {error_msg}")
-        _debug_log({"location": "backend:upload", "message": "process failure", "data": {"error": error_msg}, "hypothesisId": "RAG_FIX"})
-        raise HTTPException(500, detail=f"Failed to process document: {error_msg}")
+    # Call ASYNC process_document
+    try:
+        result = await process_document(file_path, thread_id)
+        
+        if result.get('success'):
+            info = result.get('info', {})
+            return {
+                "success": True,
+                "filename": safe_filename,
+                "info": info,
+                "message": (
+                    f"Document processed successfully!\n"
+                    f"Indexed {info.get('chunks', 0)} chunks from "
+                    f"{info.get('pages', 0)} pages in Qdrant"
+                )
+            }
+        else:
+            error_msg = result.get('error', 'Unknown error')
+            print(f"❌ Processing failed: {error_msg}")
+            raise HTTPException(500, detail=f"Failed to process document: {error_msg}")
+            
+    except Exception as e:
+        print(f"❌ Exception during processing: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(500, detail=f"Processing error: {str(e)}")
 
 
 @app.get("/api/rag-status")
@@ -125,8 +148,8 @@ async def chat(request: ChatRequest):
                 filename = attachment['name']
                 file_path = os.path.join("uploads", f"{thread_id}_{filename}")
                 if os.path.exists(file_path):
-                    print(f"🔄 Re-processing file: {filename}")
-                    result = process_document(file_path, thread_id)
+                    print(f"📄 Re-processing file: {filename}")
+                    result = await process_document(file_path, thread_id)  # CHANGED: Added await
                     if result.get('success'):
                         file_processed = True
     
