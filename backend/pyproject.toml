@@ -25,4 +25,5 @@ dependencies = [
     "ddgs>=8.3.1",
     "fastmcp>=2.14.4",
     "faiss-cpu>=1.7.4",
+    "langchain-nvidia-ai-endpoints>=1.0.3",
 ]

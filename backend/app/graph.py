@@ -53,11 +53,33 @@ def search_tool(query: str) -> str:
     Use when the user asks about current information, today's date, recent events, or general knowledge.
     Returns: Search results as a string.
     """
-    try:
-        result = _ddg.invoke(query)
-        return f"Search results: {result}"
-    except Exception as e:
-        return f"Search failed: {str(e)}"
+    import time
+    max_retries = 3
+    last_error = None
+    
+    for attempt in range(max_retries):
+        try:
+            # Try to invoke the search
+            result = _ddg.invoke(query)
+            if result:
+                return f"Search results: {result}"
+        except Exception as e:
+            last_error = e
+            # Wait briefly before retrying (exponential backoff)
+            if attempt < max_retries - 1:
+                time.sleep(1 * (attempt + 1))
+            
+    return f"Search failed after {max_retries} attempts. Last error: {str(last_error)}"
+
+
+@tool
+def get_current_time() -> str:
+    """
+    Get the exact current local date and time.
+    Use this tool when the user asks for the current time or date to ensure accuracy.
+    """
+    from datetime import datetime
+    return datetime.now().strftime("%A, %B %d, %Y at %I:%M %p")
 
 
 @tool
@@ -117,13 +139,26 @@ async def rag_tool(query: str, config: RunnableConfig = None) -> str:
         if not await qdrant_client.collection_exists(collection_name):
             return f"Document '{doc_info.get('filename')}' needs to be re-indexed. Please re-upload the file."
         
-        # Search with better parameters
-        docs = await qdrant_client.search(
-            collection_name=collection_name,
-            query=query,
-            limit=6,  # More chunks for better context
-            score_threshold=0.3  # Lower threshold for better recall
-        )
+        # Search with better parameters and retry logic
+        import asyncio
+        docs = []
+        last_error = None
+        for attempt in range(3):
+            try:
+                docs = await qdrant_client.search(
+                    collection_name=collection_name,
+                    query=query,
+                    limit=6,  # More chunks for better context
+                    score_threshold=0.3  # Lower threshold for better recall
+                )
+                break
+            except Exception as e:
+                last_error = e
+                if attempt < 2:
+                    await asyncio.sleep(1 * (attempt + 1))
+        
+        if last_error and not docs:
+             print(f"⚠️ Qdrant search failed after retries: {last_error}")
         
         if not docs:
             return (
@@ -279,6 +314,8 @@ def get_rag_status(thread_id: str = "default_thread"):
 SYSTEM_PROMPT_TEMPLATE = """
 You are Sentinel, a helpful AI assistant. Answer user questions clearly and concisely.
 
+Current Date & Time: {current_time}
+
 If user-specific memory is available, use it to personalize your responses.
 User memory: {user_details_content}
 
@@ -333,7 +370,7 @@ async def agent(state: ChatState, config: RunnableConfig, store: BaseStore):
         user_details_content = "No previous memories found."
 
     # ✅ FIX: Only load MCP tools selectively to avoid overwhelming Groq
-    static_tools = [rag_tool, search_tool]
+    static_tools = [rag_tool, search_tool, get_current_time]
     mcp_tools = []
     
     # Check if user message mentions finance/expense keywords
@@ -375,9 +412,13 @@ async def agent(state: ChatState, config: RunnableConfig, store: BaseStore):
     
     available_tools_text = "\n".join(tool_descriptions) if tool_descriptions else "   (No MCP tools loaded for this query)"
 
+    from datetime import datetime
+    current_time_str = datetime.now().strftime("%A, %B %d, %Y at %I:%M %p")
+
     system_prompt = SYSTEM_PROMPT_TEMPLATE.format(
         user_details_content=user_details_content,
-        available_tools=available_tools_text
+        available_tools=available_tools_text,
+        current_time=current_time_str
     )
     
     # Determine which model to use
@@ -495,7 +536,7 @@ async def safe_tool_node(state: ChatState, config: RunnableConfig) -> ChatState:
     
     try:
         # ✅ FIX BUG 1: Always get fresh tools (don't cache) to ensure MCP tools are available
-        static_tools = [rag_tool, search_tool]
+        static_tools = [rag_tool, search_tool, get_current_time]
         try:
             if not _mcp_client.get_tools():
                 await _mcp_client.initialize()
