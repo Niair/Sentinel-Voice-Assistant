@@ -1,0 +1,16 @@
+{
+  "buildCommand": "cd frontend && pnpm install && pnpm build",
+  "devCommand": "cd frontend && pnpm dev",
+  "installCommand": "cd frontend && pnpm install",
+  "framework": "nextjs",
+  "regions": ["iad1"],
+  "env": {
+    "POSTGRES_URL": "@postgres-url",
+    "AUTH_SECRET": "@auth-secret"
+  },
+  "build": {
+    "env": {
+      "NEXT_PUBLIC_API_URL": "@api-url"
+    }
+  }
+}

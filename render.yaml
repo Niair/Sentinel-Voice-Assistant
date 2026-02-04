@@ -1,0 +1,25 @@
+services:
+  # Backend API Service
+  - type: web
+    name: sentinal-backend
+    runtime: python
+    region: oregon  # Choose: oregon, frankfurt, singapore, ohio
+    plan: free
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: PORT
+        value: 10000
+      - fromGroup: sentinal-env-vars
+    
+databases:
+  # PostgreSQL with pgvector
+  - name: sentinal-postgres
+    databaseName: postgres
+    user: postgres
+    plan: free
+    region: oregon
+    postgresMajorVersion: 15

@@ -1,16 +1,39 @@
-SECRET_KEY=
-PORT=
+SECRET_KEY=changeme
+PORT=5000
 
 GEMINI_API_KEY=""
 GROQ_API_KEY=""
 ELEVENLABS_API_KEY=""
-WHISPER_API_KEY=
+DEEPSEEK_API_KEY = ""
+NVEDIAKIMIK2_API_KEY = ""
 
 # ---- Langchain ----
 LANGCHAIN_TRACING_V2=true
-LANGCHAIN_ENDPOINT=''
+LANGCHAIN_ENDPOINT='https://api.smith.langchain.com'
 LANGCHAIN_API_KEY=''
-LANGCHAIN_PROJECT=''
+LANGCHAIN_PROJECT='sentinel-1'
 
+# ---- Database ----
 POSTGRES_URL=postgresql+asyncpg://postgres:postgres@localhost:5442/postgres
-S3_BUCKET=                  # optional for audio storage
+
+# ---- Qdrant Vector Store ----
+QDRANT_URL=""
+QDRANT_API_KEY=""
+
+# ---- Monitoring System ----
+EVENT_BUS_TYPE=in_process   # Options: in_process, redis
+REDIS_URL=                  # Only needed if EVENT_BUS_TYPE=redis
+MONITORING_DEFAULT_MODE=PASSIVE  # Options: PASSIVE, ACTIVE
+
+# ---- Camera/Vision ----
+CAMERA_DEVICE_ID=0          # Default camera device (0 for webcam)
+CAMERA_FPS=2                # Frames per second for monitoring
+VISION_CONFIDENCE_THRESHOLD=0.6  # Minimum confidence for detections
+VISION_MODEL=yolov8n        # Vision model to use (yolov8n, yolov8s, etc.)
+
+# ---- Storage ----
+S3_BUCKET=                  # Optional for audio/video clip storage
+ALERT_FRAME_STORAGE=local   # Options: local, s3
+
+
+

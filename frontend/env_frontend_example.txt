@@ -1,0 +1,3 @@
+POSTGRES_URL=postgresql+asyncpg://postgres:postgres@localhost:5442/postgres
+# You can add a random string here for Auth later
+AUTH_SECRET=p3AmY6Z8Q7vN2wE5rT1yU4iO9pL0kJ3hG6fD9sA2
