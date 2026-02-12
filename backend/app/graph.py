@@ -435,7 +435,7 @@ async def agent(state: ChatState, config: RunnableConfig, store: BaseStore):
     
     # ✅ FIX: Lower temperature and add max retries to prevent loops
     model = ChatGroq(model=groq_model, temperature=0.1, timeout=30.0, max_retries=2)
-    llm_with_tools = model.bind_tools(all_tools)
+    llm_with_tools = model.bind_tools(all_tools, tool_choice="auto")
     
     # Filter and validate messages
     validated_messages = []
