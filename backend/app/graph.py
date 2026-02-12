@@ -1,5 +1,6 @@
 import os
 import json
+from urllib.parse import urlparse, urlunparse
 import contextvars
 from typing import TypedDict, Annotated, Optional, List, Dict
 from langchain_groq import ChatGroq
@@ -24,16 +25,16 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # --- Configuration ---
-POSTGRES_URL = os.getenv(
-    "POSTGRES_URL",
-    "postgresql+asyncpg://postgres:postgres@localhost:5442/postgres"
-)
+from app.database import POSTGRES_URL
+
 
 def _langgraph_dsn(url: str) -> str:
-    return (
-        url.replace("postgresql+asyncpg://", "postgresql://")
-        .replace("postgresql+psycopg://", "postgresql://")
-    )
+    """Convert a SQLAlchemy-style DSN to a plain postgresql:// DSN for libraries
+    that don't understand driver suffixes (e.g. asyncpg, psycopg)."""
+    parsed = urlparse(url)
+    # Strip any +driver suffix from the scheme (e.g. postgresql+asyncpg -> postgresql)
+    scheme = parsed.scheme.split('+')[0] if '+' in parsed.scheme else parsed.scheme
+    return urlunparse(parsed._replace(scheme=scheme))
 
 
 

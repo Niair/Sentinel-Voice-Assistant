@@ -1,25 +1,31 @@
 import json
 import os
-import time
 from fastapi import FastAPI, Request, File, UploadFile, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, ToolMessage
 from app.graph import get_chatbot, process_document, get_rag_status
+import asyncio
+from app.monitoring_worker import MonitoringWorker
+from app.alert_processor import AlertProcessor
 
-# #region agent log
-_DEBUG_LOG_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".cursor", "debug.log"))
-
-def _debug_log(obj: dict) -> None:
-    try:
-        with open(_DEBUG_LOG_PATH, "a", encoding="utf-8") as f:
-            f.write(json.dumps({**obj, "timestamp": int(time.time() * 1000), "sessionId": "debug-session"}) + "\n")
-    except Exception:
-        pass
-# #endregion
 
 app = FastAPI(title="Sentinel AI Backend")
+
+@app.on_event("startup")
+async def start_background_services():
+    """
+    Start background monitoring services.
+    These run independently of chat / voice requests.
+    """
+
+    monitoring_worker = MonitoringWorker()
+    alert_processor = AlertProcessor()
+
+    asyncio.create_task(monitoring_worker.start())
+    asyncio.create_task(alert_processor.start())
+
 
 class Message(BaseModel):
     role: str
@@ -162,11 +168,11 @@ async def delete_chat(thread_id: str):
     print(f"🗑️ Deleting thread {thread_id}")
     
     try:
-        from app.graph import POSTGRES_URL
+        from app.graph import POSTGRES_URL, _langgraph_dsn
         import asyncpg
         
         # Connect to DB to delete checkpoints
-        dsn = POSTGRES_URL.replace("postgresql+asyncpg://", "postgresql://")
+        dsn = _langgraph_dsn(POSTGRES_URL)
         
         try:
             conn = await asyncpg.connect(dsn)
@@ -271,7 +277,7 @@ async def chat(request: ChatRequest):
                         has_content = True
                         chunk_count += 1
                         if first_text:
-                            _debug_log({"location": "backend:stream", "message": "first 0: chunk", "data": {"contentLen": len(content)}, "hypothesisId": "H6"})
+
                             first_text = False
                             print(f"📤 First chunk streaming: {len(content)} chars")
                         yield f"0:{json.dumps(content)}\n"
@@ -361,7 +367,7 @@ async def chat(request: ChatRequest):
                 print(f"❌ CRITICAL: No content sent to client!")
                     
         except Exception as e:
-            _debug_log({"location": "backend:stream", "message": "stream error", "data": {"error": str(e)}, "hypothesisId": "H6"})
+
             print(f"❌ Stream error: {e}")
             import traceback
             traceback.print_exc()
