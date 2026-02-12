@@ -1,21 +1,9 @@
-"""
-SQLAlchemy models for monitoring system.
-Defines tables: monitoring_jobs, monitoring_events, monitoring_alerts
-"""
-
-import uuid
-from datetime import datetime
-from typing import Optional, Dict, Any, List
-from sqlalchemy import (
-    String, DateTime, Float, Boolean, Text, JSON, Enum as SQLEnum, ARRAY
-)
-from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy.dialects.postgresql import UUID
 import enum
-from enum import Enum
 from datetime import datetime
 from typing import Optional, Dict, Any
+
 from pydantic import BaseModel, Field
+
 
 # ==============================================================================
 # ENUMS
@@ -56,7 +44,7 @@ Severity = MonitoringSeverity
 
 
 # ==============================================================================
-# MODELS
+# PYDANTIC SCHEMAS (Data Transfer Objects)
 # ==============================================================================
 
 class MonitoringEventCreate(BaseModel):
