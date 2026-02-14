@@ -17,6 +17,7 @@ from langgraph.prebuilt import ToolNode, tools_condition
 from langchain_community.tools import DuckDuckGoSearchRun
 from langgraph.store.base import BaseStore
 from app.qdrant_manager import get_qdrant_client
+from langchain_core.utils.function_calling import convert_to_openai_tool
 
 from app.mcp import SafeMCPClient
 from langgraph.store.postgres import PostgresStore
@@ -435,7 +436,8 @@ async def agent(state: ChatState, config: RunnableConfig, store: BaseStore):
     
     # ✅ FIX: Lower temperature and add max retries to prevent loops
     model = ChatGroq(model=groq_model, temperature=0.1, timeout=30.0, max_retries=2)
-    llm_with_tools = model.bind_tools(all_tools, tool_choice="auto")
+    tool_schemas = [convert_to_openai_tool(tool) for tool in all_tools]
+    llm_with_tools = model.bind_tools(tool_schemas, tool_choice="auto")
     
     # Filter and validate messages
     validated_messages = []
@@ -494,7 +496,6 @@ async def agent(state: ChatState, config: RunnableConfig, store: BaseStore):
                         today = datetime.now().strftime('%Y-%m-%d')
                         
                         # Create a direct tool call message
-                        from langchain_core.messages import AIMessage
                         tool_call_msg = AIMessage(
                             content="I'll add that expense for you.",
                             tool_calls=[{
