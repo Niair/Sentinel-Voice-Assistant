@@ -316,3 +316,82 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* ChatGPT-style Chat Interface Styles */
+
+/* Message container max-width for centered layout */
+.messages-container {
+  @apply max-w-3xl mx-auto;
+}
+
+/* User message bubble styling */
+.user-message-bubble {
+  @apply bg-[#f7f7f8] dark:bg-[#2f2f2f] text-foreground px-5 py-2.5 rounded-3xl text-[15px] leading-relaxed;
+}
+
+/* Assistant message styling */
+.assistant-message {
+  @apply text-[15px] leading-7 text-foreground;
+}
+
+/* Assistant header label */
+.assistant-header {
+  @apply text-sm font-semibold text-foreground mb-1.5;
+}
+
+/* File attachment card */
+.file-attachment-card {
+  @apply flex items-center gap-3 p-3 pr-8 rounded-xl border bg-white dark:bg-card hover:bg-gray-50 dark:hover:bg-accent/50 transition-colors shadow-sm;
+}
+
+/* Copy button styling */
+.copy-button {
+  @apply p-1.5 rounded-md hover:bg-black/5 dark:hover:bg-white/10 transition-colors text-muted-foreground hover:text-foreground;
+}
+
+/* Code block container */
+.code-block-container {
+  @apply bg-[#1e1e1e] dark:bg-[#0d0d0d] rounded-xl p-4 my-4 text-white text-sm overflow-x-auto;
+}
+
+/* Inline code styling */
+.inline-code {
+  @apply bg-black/5 dark:bg-white/10 px-1.5 py-0.5 rounded-md text-sm font-mono;
+}
+
+/* Table styling */
+.markdown-table {
+  @apply w-full border-collapse mb-4;
+}
+
+.markdown-table th {
+  @apply border border-border p-2 text-left font-semibold bg-muted;
+}
+
+.markdown-table td {
+  @apply border border-border p-2;
+}
+
+.markdown-table tr:nth-child(even) {
+  @apply bg-muted/50;
+}
+
+/* Avatar styling */
+.assistant-avatar {
+  @apply flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground text-sm font-semibold;
+}
+
+/* Message actions fade-in */
+.message-actions {
+  @apply opacity-0 group-hover/message:opacity-100 transition-opacity;
+}
+
+/* Thinking indicator */
+.thinking-indicator {
+  @apply flex items-center gap-2 pt-2 text-muted-foreground text-sm;
+}
+
+/* Smooth message transitions */
+.message-transition {
+  @apply animate-in fade-in duration-200;
+}

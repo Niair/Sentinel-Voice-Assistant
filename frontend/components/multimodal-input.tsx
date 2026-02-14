@@ -332,7 +332,7 @@ function PureMultimodalInput({
       />
 
       <PromptInput
-        className="rounded-2xl border-border/50 bg-background/50 p-2 shadow-2xl backdrop-blur-2xl transition-all duration-300 focus-within:bg-background/80 hover:border-primary/30"
+        className="rounded-[26px] border border-border/60 bg-muted/40 p-1.5 shadow-sm transition-all duration-200 focus-within:bg-background focus-within:border-border/80 focus-within:shadow-md hover:bg-muted/50"
         onSubmit={(event) => {
           event.preventDefault();
           if (!input.trim() && attachments.length === 0) {
@@ -380,13 +380,13 @@ function PureMultimodalInput({
         )}
         <div className="flex flex-row items-start gap-1 sm:gap-2">
           <PromptInputTextarea
-            className="grow resize-none border-0! border-none! bg-transparent px-3 py-3 text-base outline-none ring-0 placeholder:text-muted-foreground/50 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 [&::-webkit-scrollbar]:hidden"
+            className="grow resize-none border-0! border-none! bg-transparent px-3 py-2.5 text-[15px] outline-none ring-0 placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 [&::-webkit-scrollbar]:hidden"
             data-testid="multimodal-input"
             disableAutoResize={true}
             maxHeight={200}
             minHeight={44}
             onChange={handleInput}
-            placeholder="How can Sentinel help you today?"
+            placeholder="Message Sentinel..."
             ref={textareaRef}
             rows={1}
             value={input}

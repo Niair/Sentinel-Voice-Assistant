@@ -49,31 +49,39 @@ function PureMessages({
         className="absolute inset-0 touch-pan-y overflow-y-auto"
         ref={messagesContainerRef}
       >
-        <div className="mx-auto flex min-w-0 max-w-4xl flex-col gap-4 px-2 py-4 md:gap-6 md:px-4">
+        <div className="mx-auto flex min-w-0 max-w-[48rem] flex-col gap-5 px-4 py-6 md:gap-6 md:px-6">
           {messages.length === 0 && <Greeting />}
 
-          {messages.map((message, index) => (
-            <PreviewMessage
-              addToolApprovalResponse={addToolApprovalResponse}
-              chatId={chatId}
-              isLoading={
-                status === "streaming" && messages.length - 1 === index
-              }
-              isReadonly={isReadonly}
-              key={message.id}
-              message={message}
-              regenerate={regenerate}
-              requiresScrollPadding={
-                hasSentMessage && index === messages.length - 1
-              }
-              setMessages={setMessages}
-              vote={
-                votes
-                  ? votes.find((vote) => vote.messageId === message.id)
-                  : undefined
-              }
-            />
-          ))}
+          {messages.map((message, index) => {
+            // Find if this is the first assistant message
+            const isFirstAssistantMessage = 
+              message.role === "assistant" && 
+              messages.findIndex(m => m.role === "assistant") === index;
+            
+            return (
+              <PreviewMessage
+                addToolApprovalResponse={addToolApprovalResponse}
+                chatId={chatId}
+                isLoading={
+                  status === "streaming" && messages.length - 1 === index
+                }
+                isReadonly={isReadonly}
+                isFirstMessage={isFirstAssistantMessage}
+                key={message.id}
+                message={message}
+                regenerate={regenerate}
+                requiresScrollPadding={
+                  hasSentMessage && index === messages.length - 1
+                }
+                setMessages={setMessages}
+                vote={
+                  votes
+                    ? votes.find((vote) => vote.messageId === message.id)
+                    : undefined
+                }
+              />
+            );
+          })}
 
           {status === "submitted" &&
             !messages.some((msg) =>
