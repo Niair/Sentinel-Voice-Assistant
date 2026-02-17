@@ -1,14 +1,18 @@
 import json
 import os
-from fastapi import FastAPI, Request, File, UploadFile, HTTPException
+from fastapi import FastAPI, Request, File, UploadFile, HTTPException, WebSocket
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, ToolMessage
 from app.graph import get_chatbot, process_document, get_rag_status
 import asyncio
+from datetime import datetime
+from typing import Optional
 from app.monitoring_worker import MonitoringWorker
 from app.alert_processor import AlertProcessor
+from app.websocket_manager import alert_ws_manager
+from app.alert_history import alert_history
 from contextlib import asynccontextmanager
 
 
@@ -428,6 +432,159 @@ async def test_stream():
         yield f"0:{json.dumps('World!')}\n"
 
     return StreamingResponse(test_gen(), media_type="text/plain")
+
+
+# ==============================================================================
+# MONITORING ENDPOINTS (Camera & Alerts)
+# ==============================================================================
+
+
+@app.websocket("/ws/alerts")
+async def websocket_alerts(websocket: WebSocket):
+    """
+    WebSocket endpoint for real-time alert streaming.
+
+    Connect to this endpoint to receive instant notifications when:
+    - Motion/people detected
+    - Camera becomes unavailable
+    - Security threats identified
+    """
+    await alert_ws_manager.connect(websocket)
+    try:
+        # Keep connection alive and wait for client disconnect
+        while True:
+            # Receive ping from client (optional)
+            data = await websocket.receive_text()
+            if data == "ping":
+                await websocket.send_text("pong")
+    except Exception as e:
+        # Client disconnected
+        pass
+    finally:
+        await alert_ws_manager.disconnect(websocket)
+
+
+@app.get("/api/alerts/history")
+async def get_alerts_history(
+    start: Optional[str] = None,
+    end: Optional[str] = None,
+    severity: Optional[str] = None,
+    limit: int = 100,
+    offset: int = 0,
+):
+    """
+    Get alert history with filtering options.
+
+    Query Parameters:
+    - start: ISO datetime string (e.g., "2025-02-17T10:00:00")
+    - end: ISO datetime string
+    - severity: Filter by severity (LOW, MEDIUM, HIGH)
+    - limit: Maximum number of alerts (default: 100)
+    - offset: Pagination offset
+
+    Returns:
+        List of alerts sorted by timestamp (newest first)
+    """
+    try:
+        # Parse datetime strings
+        start_time = datetime.fromisoformat(start) if start else None
+        end_time = datetime.fromisoformat(end) if end else None
+
+        alerts = await alert_history.get_alerts(
+            start_time=start_time,
+            end_time=end_time,
+            severity=severity,
+            limit=limit,
+            offset=offset,
+        )
+
+        return {"success": True, "count": len(alerts), "alerts": alerts}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/alerts/recent")
+async def get_recent_alerts(minutes: int = 60):
+    """
+    Get alerts from the last N minutes.
+
+    Query Parameters:
+    - minutes: Number of minutes to look back (default: 60)
+    """
+    try:
+        alerts = await alert_history.get_recent_alerts(minutes=minutes)
+        return {
+            "success": True,
+            "count": len(alerts),
+            "minutes": minutes,
+            "alerts": alerts,
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/alerts/stats")
+async def get_alerts_stats():
+    """Get alert statistics"""
+    try:
+        stats = await alert_history.get_stats()
+        return {"success": True, "stats": stats}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/camera/status")
+async def get_camera_status():
+    """
+    Get current camera and monitoring system status.
+
+    Returns:
+        - Camera availability
+        - Detector status (YOLO)
+        - WebSocket connections
+        - Recent detections
+    """
+    from app.monitoring_worker import MonitoringWorker
+    from app.detection import detector
+
+    try:
+        # Get detector status
+        detector_status = detector.get_status()
+
+        # Get WebSocket connections
+        ws_connections = alert_ws_manager.get_connection_count()
+
+        # Try to get monitoring worker status
+        monitoring_status = {
+            "running": False,
+            "camera_available": False,
+            "message": "Monitoring worker not initialized",
+        }
+
+        return {
+            "success": True,
+            "status": {
+                "camera": {
+                    "available": detector_status["initialized"]
+                    and detector_status["yolo_available"],
+                    "message": "Camera ready"
+                    if detector_status["initialized"]
+                    else "No camera connected",
+                },
+                "detector": detector_status,
+                "websocket_connections": ws_connections,
+                "monitoring": monitoring_status,
+            },
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "status": {
+                "camera": {"available": False, "message": "System error"},
+                "detector": {"initialized": False, "yolo_available": False},
+            },
+        }
 
 
 if __name__ == "__main__":
