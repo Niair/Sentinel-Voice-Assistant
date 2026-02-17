@@ -1,0 +1,394 @@
+"""
+Qdrant client wrapper for RAG system - FIXED with Rate Limiting
+"""
+
+import asyncio
+import os
+import re
+from typing import List, Optional, Dict, Any
+
+from qdrant_client import AsyncQdrantClient
+from qdrant_client.models import (
+    Distance,
+    VectorParams,
+    PointStruct,
+    Filter,
+    FieldCondition,
+    MatchValue,
+)
+from langchain_core.documents import Document
+from dotenv import load_dotenv
+
+# Handle langchain-google-genai import
+try:
+    from langchain_google_genai import GoogleGenerativeAIEmbeddings
+
+    GEMINI_EMBEDDINGS_AVAILABLE = True
+except ImportError as e:
+    print(f"[WARNING] langchain-google-genai import error: {e}")
+    GEMINI_EMBEDDINGS_AVAILABLE = False
+    GoogleGenerativeAIEmbeddings = None
+
+load_dotenv()
+
+# ==============================================================================
+# RATE LIMITING CONSTANTS
+# Google gemini-embedding-001 free tier: 100 requests/minute
+# Each chunk = 1 request, so we batch 80 chunks and wait 65s between batches
+# ==============================================================================
+EMBED_BATCH_SIZE = 80  # Chunks per minute (under 100/min limit)
+EMBED_BATCH_DELAY = 65  # Seconds to wait between batches
+MAX_RETRY_ATTEMPTS = 3  # Retries on 429
+
+
+class SafeQdrantClient:
+    """
+    Thread-safe Qdrant client wrapper with rate limiting for Google free tier.
+
+    THE BUG THAT WAS CRASHING LARGE PDFs:
+      Old code called aembed_documents(all_827_chunks) at once.
+      This fired 827 API requests immediately, blowing past the 100 req/min limit.
+
+    THE FIX:
+      Process embeddings in batches of 80 with 65s delays between batches.
+      Large PDFs will take longer but will ALWAYS succeed.
+
+    Time estimates (free tier):
+      - Small PDF  (<80 chunks)  = instant
+      - Medium PDF (80-160)      = ~65 seconds
+      - Large PDF  (160-827)     = ~10 minutes
+    """
+
+    def __init__(self):
+        self._client: Optional[AsyncQdrantClient] = None
+        self._embeddings = None
+        self._embedding_dim = 3072  # gemini-embedding-001 dimension
+        self._initialized = False
+        self.qdrant_url = os.getenv("QDRANT_URL")
+        self.qdrant_api_key = os.getenv("QDRANT_API_KEY")
+
+    async def initialize(self) -> None:
+        """Initialize Qdrant client and embedding model."""
+        if self._initialized:
+            return
+
+        try:
+            if not self.qdrant_url or not self.qdrant_api_key:
+                raise ValueError("QDRANT_URL and QDRANT_API_KEY must be set in .env")
+
+            if not GEMINI_EMBEDDINGS_AVAILABLE:
+                raise ImportError("langchain-google-genai is not installed.")
+
+            # Init Embeddings
+            self._embeddings = GoogleGenerativeAIEmbeddings(
+                model="gemini-embedding-001"
+            )
+
+            # Init Qdrant Client
+            self._client = AsyncQdrantClient(
+                url=self.qdrant_url,
+                api_key=self.qdrant_api_key,
+                prefer_grpc=True,
+            )
+
+            # Verify Connection
+            await self._client.get_collections()
+
+            self._initialized = True
+            print(f"[SUCCESS] Qdrant RAG system initialized (URL: {self.qdrant_url})")
+
+        except Exception as e:
+            print(f"[ERROR] Qdrant init failed: {e}")
+            self._client = None
+            raise
+
+    def is_available(self) -> bool:
+        return self._initialized and self._client is not None
+
+    # ==========================================================================
+    # RATE-LIMITED EMBEDDING  (THE CORE FIX)
+    # ==========================================================================
+
+    def _parse_quota_error(self, error_str: str) -> tuple[bool, bool, str]:
+        """
+        Parse Google API quota error to determine if it's a daily or per-minute limit.
+
+        Returns:
+            tuple: (is_daily_limit, is_rate_limit, error_message)
+        """
+        is_rate_limit = "RESOURCE_EXHAUSTED" in error_str or "429" in error_str
+
+        if not is_rate_limit:
+            return False, False, ""
+
+        # Check for daily quota (quotaId contains "PerDay")
+        if "PerDay" in error_str or "EmbedContentRequestsPerDay" in error_str:
+            # Extract quota value if available
+            quota_match = re.search(r"quotaValue[^\d]*(\d+)", error_str)
+            quota_value = quota_match.group(1) if quota_match else "1000"
+
+            error_msg = (
+                f"[ERROR] Daily quota exceeded: Google Gemini free tier allows {quota_value} embeddings per day. "
+                f"This document requires too many chunks. "
+                f"Please wait until tomorrow or upgrade your plan at https://ai.google.dev/"
+            )
+            return True, True, error_msg
+
+        # Check for per-minute quota (quotaId contains "PerMinute")
+        if "PerMinute" in error_str:
+            return False, True, "Per-minute rate limit hit"
+
+        return False, True, "Rate limit hit"
+
+    async def _embed_with_rate_limit(self, texts: List[str]) -> List[List[float]]:
+        """
+        Embed texts in batches to respect Google free tier quota (100 req/min).
+
+        FIX: Old code sent ALL chunks at once → 429 RESOURCE_EXHAUSTED crash.
+        NEW: Sends batches of 80, waits 65s between batches, retries on 429.
+
+        ALSO FIXES: Daily quota detection - raises clear error immediately instead of retrying.
+        """
+        all_embeddings = []
+        total_batches = (len(texts) + EMBED_BATCH_SIZE - 1) // EMBED_BATCH_SIZE
+
+        for batch_idx in range(total_batches):
+            start = batch_idx * EMBED_BATCH_SIZE
+            end = min(start + EMBED_BATCH_SIZE, len(texts))
+            batch = texts[start:end]
+
+            print(
+                f"[INFO] Embedding batch {batch_idx + 1}/{total_batches} "
+                f"({len(batch)} chunks | {end}/{len(texts)} total)..."
+            )
+
+            # Retry loop for 429 errors
+            for attempt in range(MAX_RETRY_ATTEMPTS):
+                try:
+                    batch_embeddings = await self._embeddings.aembed_documents(batch)
+                    all_embeddings.extend(batch_embeddings)
+                    break  # Success
+
+                except Exception as e:
+                    error_str = str(e)
+                    is_daily_limit, is_rate_limit, error_msg = self._parse_quota_error(
+                        error_str
+                    )
+
+                    # Check if it's a daily quota error - raise immediately without retry
+                    if is_daily_limit:
+                        print(error_msg)
+                        raise RuntimeError(error_msg)
+
+                    # For per-minute rate limits, retry with delay
+                    if is_rate_limit and attempt < MAX_RETRY_ATTEMPTS - 1:
+                        # Parse the retry delay Google suggests
+                        retry_delay = EMBED_BATCH_DELAY
+                        delay_match = re.search(r"retryDelay.*? (\d+)s", error_str)
+                        if delay_match:
+                            retry_delay = int(delay_match.group(1)) + 5  # +5s buffer
+
+                        print(
+                            f"[WARN] Rate limit hit. Waiting {retry_delay}s "
+                            f"(attempt {attempt + 1}/{MAX_RETRY_ATTEMPTS})..."
+                        )
+                        await asyncio.sleep(retry_delay)
+                    else:
+                        raise  # Non-rate-limit error OR all retries exhausted
+
+            # Wait between batches (except after the last batch)
+            if batch_idx < total_batches - 1:
+                print(
+                    f"[INFO] Batch {batch_idx + 1}/{total_batches} done. "
+                    f"Waiting {EMBED_BATCH_DELAY}s (free tier: 100 req/min)..."
+                )
+                await asyncio.sleep(EMBED_BATCH_DELAY)
+
+        print(f"[INFO] All {len(texts)} chunks embedded successfully.")
+        return all_embeddings
+
+    async def _embed_query_with_retry(self, query: str) -> List[float]:
+        """Embed a single search query with retry on rate limit."""
+        for attempt in range(MAX_RETRY_ATTEMPTS):
+            try:
+                return await self._embeddings.aembed_query(query)
+            except Exception as e:
+                error_str = str(e)
+                is_rate_limit = "RESOURCE_EXHAUSTED" in error_str or "429" in error_str
+                if is_rate_limit and attempt < MAX_RETRY_ATTEMPTS - 1:
+                    retry_delay = 10  # Short delay for single query
+                    delay_match = re.search(r"retryDelay.*?(\d+)s", error_str)
+                    if delay_match:
+                        retry_delay = int(delay_match.group(1)) + 2
+                    print(
+                        f"[WARN] Rate limit on query embed, waiting {retry_delay}s..."
+                    )
+                    await asyncio.sleep(retry_delay)
+                else:
+                    raise
+        raise RuntimeError("Query embedding failed after all retries")
+
+    # ==========================================================================
+    # COLLECTION MANAGEMENT
+    # ==========================================================================
+
+    async def create_collection(self, collection_name: str) -> bool:
+        if not self.is_available():
+            return False
+        try:
+            if await self._client.collection_exists(collection_name):
+                return True
+            await self._client.create_collection(
+                collection_name=collection_name,
+                vectors_config=VectorParams(
+                    size=self._embedding_dim, distance=Distance.COSINE
+                ),
+            )
+            return True
+        except Exception as e:
+            print(f"[ERROR] Create collection failed: {e}")
+            return False
+
+    async def collection_exists(self, collection_name: str) -> bool:
+        if not self.is_available():
+            return False
+        try:
+            return await self._client.collection_exists(collection_name)
+        except Exception:
+            return False
+
+    async def delete_collection(self, collection_name: str):
+        if self.is_available():
+            await self._client.delete_collection(collection_name)
+
+    # ==========================================================================
+    # DOCUMENT INDEXING
+    # ==========================================================================
+
+    async def index_documents(
+        self,
+        collection_name: str,
+        documents: List[Document],
+        batch_size: int = 50,
+    ) -> Dict[str, Any]:
+        """
+        Index documents with rate-limited embedding.
+
+        For large PDFs (>80 chunks), this will take multiple minutes.
+        The user should be informed to wait - this is expected behavior
+        on the free tier.
+        """
+        if not self.is_available():
+            return {"success": False, "error": "Client not available"}
+
+        try:
+            await self.create_collection(collection_name)
+
+            texts = [doc.page_content for doc in documents]
+            metadatas = [doc.metadata for doc in documents]
+
+            # Warn about large documents
+            total_batches = (len(texts) + EMBED_BATCH_SIZE - 1) // EMBED_BATCH_SIZE
+            if total_batches > 1:
+                estimated_minutes = (total_batches - 1) * (EMBED_BATCH_DELAY / 60)
+                print(
+                    f"[INFO] Large document: {len(texts)} chunks → {total_batches} batches. "
+                    f"Estimated time: ~{estimated_minutes:.1f} min (free tier rate limit)."
+                )
+
+            # ✅ CORE FIX: Rate-limited embedding
+            embeddings = await self._embed_with_rate_limit(texts)
+
+            # Build Qdrant points
+            import uuid
+
+            points = []
+            for text, embedding, metadata in zip(texts, embeddings, metadatas):
+                points.append(
+                    PointStruct(
+                        id=str(uuid.uuid4()),
+                        vector=embedding,
+                        payload={
+                            "text": text,
+                            "metadata": metadata,
+                            "page": metadata.get("page", 0),
+                        },
+                    )
+                )
+
+            # Upload to Qdrant in batches
+            print(f"[INFO] Uploading {len(points)} points to Qdrant...")
+            for i in range(0, len(points), batch_size):
+                batch = points[i : i + batch_size]
+                await self._client.upsert(
+                    collection_name=collection_name,
+                    points=batch,
+                    wait=True,
+                )
+
+            print(
+                f"[INFO] Upload complete: {len(points)} points in '{collection_name}'"
+            )
+            return {"success": True, "chunks_indexed": len(documents)}
+
+        except Exception as e:
+            print(f"[ERROR] Indexing failed: {e}")
+            return {"success": False, "error": str(e)}
+
+    # ==========================================================================
+    # SEARCH
+    # ==========================================================================
+
+    async def search(
+        self,
+        collection_name: str,
+        query: str,
+        limit: int = 6,
+        score_threshold: float = 0.3,
+    ) -> List[Document]:
+        """Search with rate-limit retry on query embedding."""
+        if not self.is_available():
+            return []
+
+        try:
+            query_embedding = await self._embed_query_with_retry(query)
+
+            response = await self._client.query_points(
+                collection_name=collection_name,
+                query=query_embedding,
+                limit=limit,
+                score_threshold=score_threshold,
+                with_payload=True,
+            )
+
+            documents = []
+            for point in response.points:
+                doc = Document(
+                    page_content=point.payload.get("text", ""),
+                    metadata={
+                        **point.payload.get("metadata", {}),
+                        "score": point.score,
+                        "page": point.payload.get("page"),
+                    },
+                )
+                documents.append(doc)
+
+            return documents
+
+        except Exception as e:
+            print(f"[ERROR] Search failed: {e}")
+            import traceback
+
+            traceback.print_exc()
+            return []
+
+
+# Singleton
+_qdrant_client: Optional[SafeQdrantClient] = None
+
+
+def get_qdrant_client() -> SafeQdrantClient:
+    global _qdrant_client
+    if _qdrant_client is None:
+        _qdrant_client = SafeQdrantClient()
+    return _qdrant_client

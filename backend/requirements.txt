@@ -17,7 +17,7 @@ langgraph-checkpoint-postgres>=2.1.1
 langgraph-checkpoint>=2.1.1
 
 # AI Integrations
-langchain-google-genai>=2.0.10
+# langchain-google-genai>=2.0.10  # REMOVED - migrated to Jina AI
 langchain-groq>=0.3.7
 langchain-nvidia-ai-endpoints>=1.0.3
 langchain-openai
@@ -50,9 +50,10 @@ pydantic-settings>=2.10.1
 requests>=2.32.4
 httpx>=0.28.1
 python-multipart
+aiohttp>=3.9.0
 
-# Google AI
-google-generativeai
+# Google AI (kept for reference, not used for embeddings)
+# google-generativeai  # REMOVED - migrated to Jina AI
 
 # Utilities
 tenacity>=9.1.2

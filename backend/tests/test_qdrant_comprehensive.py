@@ -347,10 +347,6 @@ async def main():
 
     if passed_count == total_count:
         print("\n[SUCCESS] All tests passed! Qdrant RAG is ready for production!")
-        print("\nNext steps:")
-        print("1. Update your graph.py with Qdrant code")
-        print("2. Update your main.py with async endpoints")
-        print("3. Test with a real PDF upload")
         return True
     else:
         print(f"\n[WARN] {total_count - passed_count} test(s) failed")

@@ -67,4 +67,4 @@ backend> set PYTHONPATH=. && python tests\test_event_bus.py
 
 test:
 
-backend> set PYTHONPATH=. && python tests/test_database_connection.py 
+backend> set PYTHONPATH=. && python tests/test_database_connection.py
