@@ -1,5 +1,6 @@
 import json
 import os
+import logging
 from fastapi import FastAPI, Request, File, UploadFile, HTTPException, WebSocket
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -14,6 +15,9 @@ from app.alert_processor import AlertProcessor
 from app.websocket_manager import alert_ws_manager
 from app.alert_history import alert_history
 from contextlib import asynccontextmanager
+
+# Setup logging
+logger = logging.getLogger(__name__)
 
 
 # Global instances for access across the app
@@ -546,11 +550,11 @@ async def get_camera_status():
     """
     Get current camera and monitoring system status.
 
-    Returns:
-        - Camera availability
-        - Detector status (YOLO)
-        - WebSocket connections
-        - Recent detections
+    Returns detailed status including:
+    - Camera availability and capture status
+    - Detector status (YOLO)
+    - WebSocket connections
+    - Retry count and last status
     """
     from app.detection import detector
 
@@ -573,19 +577,38 @@ async def get_camera_status():
                 "message": "Monitoring worker not initialized",
             }
 
+        # Build user-friendly status message
+        if monitoring_status.get("camera_capturing"):
+            camera_message = "[SUCCESS] Camera working properly! Monitoring is active."
+            camera_status = "connected"
+        elif monitoring_status.get("camera_available"):
+            camera_message = "[WARNING] Camera detected but not capturing frames"
+            camera_status = "error"
+        else:
+            camera_message = (
+                "[INFO] No camera detected. Connect a camera to enable monitoring."
+            )
+            camera_status = "disconnected"
+
         return {
             "success": True,
             "status": {
                 "camera": {
-                    "available": detector_status["initialized"]
-                    and detector_status["yolo_available"],
-                    "message": "Camera ready"
-                    if detector_status["initialized"]
-                    else "No camera connected",
+                    "available": monitoring_status.get("camera_available", False),
+                    "capturing": monitoring_status.get("camera_capturing", False),
+                    "status": camera_status,
+                    "message": camera_message,
+                    "can_open": not monitoring_status.get("camera_available", False),
                 },
                 "detector": detector_status,
                 "websocket_connections": ws_connections,
                 "monitoring": monitoring_status,
+                "retry_info": {
+                    "count": monitoring_status.get("retry_count", 0),
+                    "retry_interval_seconds": 10,
+                }
+                if not monitoring_status.get("camera_available")
+                else None,
             },
         }
     except Exception as e:
@@ -597,6 +620,199 @@ async def get_camera_status():
                 "detector": {"initialized": False, "yolo_available": False},
             },
         }
+
+
+@app.post("/api/camera/open")
+async def open_camera():
+    """
+    Manually open/trigger camera connection.
+
+    Called when user clicks "Open Camera" button in the UI.
+    Attempts to open the camera immediately.
+
+    Returns:
+        Success status and camera diagnostics
+    """
+    global monitoring_worker
+
+    if not monitoring_worker:
+        return {
+            "success": False,
+            "error": "Monitoring worker not initialized",
+            "message": "System error - monitoring service not running",
+        }
+
+    # Check if camera is already open
+    status = monitoring_worker.get_status()
+    if status.get("camera_capturing"):
+        return {
+            "success": True,
+            "message": "Camera is already open and working",
+            "status": "already_open",
+            "camera_status": status,
+        }
+
+    # Try to open camera
+    logger.info("[API] User requested camera open")
+    success = await monitoring_worker.open_camera_manual()
+
+    if success:
+        return {
+            "success": True,
+            "message": "[SUCCESS] Camera opened successfully!",
+            "status": "opened",
+            "camera_status": monitoring_worker.get_status(),
+        }
+    else:
+        return {
+            "success": False,
+            "message": "[ERROR] Could not open camera. Please check connection.",
+            "status": "failed",
+            "camera_status": monitoring_worker.get_status(),
+        }
+
+
+@app.post("/api/camera/test")
+async def test_camera():
+    """
+    Test camera with detailed diagnostics.
+
+    Performs comprehensive tests:
+    1. Check if OpenCV is available
+    2. Try to open camera device
+    3. Test frame capture
+    4. Verify frame quality
+
+    Returns:
+        Detailed diagnostics and recommendations
+    """
+    from app.detection import detector
+
+    diagnostics = {
+        "timestamp": datetime.utcnow().isoformat(),
+        "tests": [],
+        "overall_status": "unknown",
+        "message": "",
+    }
+
+    # Test 1: OpenCV availability
+    try:
+        import cv2
+
+        diagnostics["tests"].append(
+            {
+                "name": "OpenCV Installation",
+                "status": "PASS",
+                "message": "OpenCV is installed and available",
+            }
+        )
+    except ImportError:
+        diagnostics["tests"].append(
+            {
+                "name": "OpenCV Installation",
+                "status": "FAIL",
+                "message": "OpenCV not installed. Run: pip install opencv-python",
+            }
+        )
+        diagnostics["overall_status"] = "ERROR"
+        diagnostics["message"] = "OpenCV not installed"
+        return {"success": False, "diagnostics": diagnostics}
+
+    # Test 2: YOLO detector
+    detector_status = detector.get_status()
+    if detector_status["initialized"]:
+        diagnostics["tests"].append(
+            {
+                "name": "YOLO Detector",
+                "status": "PASS",
+                "message": f"YOLO model loaded: {detector_status['model']}",
+            }
+        )
+    else:
+        diagnostics["tests"].append(
+            {
+                "name": "YOLO Detector",
+                "status": "FAIL",
+                "message": "YOLO model not loaded",
+            }
+        )
+
+    # Test 3: Camera device detection
+    cap = None
+    try:
+        cap = cv2.VideoCapture(0)
+        if cap.isOpened():
+            diagnostics["tests"].append(
+                {
+                    "name": "Device Detection",
+                    "status": "PASS",
+                    "message": "Camera device found at index 0",
+                }
+            )
+
+            # Test 4: Frame capture
+            ret, frame = cap.read()
+            if ret and frame is not None:
+                height, width = frame.shape[:2]
+                diagnostics["tests"].append(
+                    {
+                        "name": "Frame Capture",
+                        "status": "PASS",
+                        "message": f"Successfully capturing frames ({width}x{height})",
+                    }
+                )
+                diagnostics["overall_status"] = "WORKING"
+                diagnostics["message"] = "[SUCCESS] Camera is working properly!"
+                diagnostics["frame_info"] = {
+                    "width": width,
+                    "height": height,
+                    "channels": frame.shape[2] if len(frame.shape) > 2 else 1,
+                }
+            else:
+                diagnostics["tests"].append(
+                    {
+                        "name": "Frame Capture",
+                        "status": "FAIL",
+                        "message": "Cannot read frames from camera",
+                    }
+                )
+                diagnostics["overall_status"] = "ERROR"
+                diagnostics["message"] = (
+                    "[ERROR] Camera device found but cannot capture video"
+                )
+                diagnostics["recommendation"] = (
+                    "Check camera permissions or try reconnecting the camera"
+                )
+        else:
+            diagnostics["tests"].append(
+                {
+                    "name": "Device Detection",
+                    "status": "FAIL",
+                    "message": "No camera device found at index 0",
+                }
+            )
+            diagnostics["overall_status"] = "NOT_FOUND"
+            diagnostics["message"] = "[INFO] No camera detected"
+            diagnostics["recommendation"] = "Connect a USB camera to your computer"
+
+    except Exception as e:
+        diagnostics["tests"].append(
+            {
+                "name": "Camera Test",
+                "status": "ERROR",
+                "message": f"Error during test: {str(e)}",
+            }
+        )
+        diagnostics["overall_status"] = "ERROR"
+        diagnostics["message"] = f"[ERROR] Exception during camera test: {str(e)}"
+    finally:
+        if cap:
+            cap.release()
+
+    return {
+        "success": diagnostics["overall_status"] in ["WORKING"],
+        "diagnostics": diagnostics,
+    }
 
 
 if __name__ == "__main__":

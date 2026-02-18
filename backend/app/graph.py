@@ -29,6 +29,7 @@ from langchain_core.utils.function_calling import convert_to_openai_tool
 from app.mcp import SafeMCPClient
 from langgraph.store.postgres import PostgresStore
 from dotenv import load_dotenv
+from app.camera_tools import camera_tools
 
 load_dotenv()
 
@@ -334,7 +335,7 @@ def get_rag_status(thread_id: str = "default_thread"):
 
 # --- Long-term Memory Logic ---
 SYSTEM_PROMPT_TEMPLATE = """
-You are Sentinel, a helpful AI assistant. Answer user questions clearly and concisely.
+You are Sentinel, a helpful AI assistant with security monitoring capabilities. Answer user questions clearly and concisely.
 
 Current Date & Time: {current_time}
 
@@ -351,7 +352,14 @@ You have access to the following tools:
    - Use when: User asks about dates, recent events, facts, or news
    - IMPORTANT: Use this tool ONCE, then answer based on the results. Do NOT call it multiple times.
 
-3. **MCP Tools** (Finance & Expense Tracking):
+3. **Camera Tools** (Security Monitoring):
+   - **query_camera_status**: Check if camera is working
+   - **get_recent_camera_detections**: See what the camera detected recently. Pass minutes parameter to specify time range.
+   - **get_camera_alert_summary**: Get statistics about camera activity
+   
+   **PROACTIVE SECURITY**: Every 3-5 conversation turns, automatically check for recent camera detections. Pass minutes=5 as parameter to check last 5 minutes. If you detect any person or activity, mention it naturally: "By the way, I noticed some activity at your camera just now..."
+
+4. **MCP Tools** (Finance & Expense Tracking):
 {available_tools}
 
 **CRITICAL RULES - READ CAREFULLY:**
@@ -360,12 +368,25 @@ You have access to the following tools:
 3. **DO NOT SUMMARIZE UNASKED**: If you added an expense, just say "Added". Do NOT call `list_expenses` or `net_cashflow` automatically unless the user explicitly asked for a summary.
 4. **TRUST THE TOOL OUTPUT**: If a tool returns "success" or data, assume it worked. Do not check it again.
 5. **FINANCE FORMAT**: Always use NUMBERS for amounts (e.g., 50, not "50") and YYYY-MM-DD for dates.
+6. **PROACTIVE CAMERA CHECKS**: Periodically check camera status and mention any security events naturally in conversation.
+
+**⚠️ CRITICAL: PROPER TOOL CALLING FORMAT:**
+- When calling a tool, use ONLY the tool name without parentheses or parameters in the name
+- CORRECT: Tool name: "get_recent_camera_detections", Args: {{"minutes": 5}}
+- INCORRECT: Tool name: "get_recent_camera_detections(minutes=5)" or "get_recent_camera_detections minutes=5"
+- Always pass parameters in the 'args' object, NOT in the tool name string
 
 **Example Workflow:**
 - User: "Add expense 50 for food"
 - You: Call `add_expense(amount=50, ...)`
 - Tool Output: "Expense added"
 - You: "I've added the expense of 50 for food." (STOP HERE, do not call list_expenses)
+
+**Proactive Security Example:**
+- User: "What's the weather?"
+- You: Call get_recent_camera_detections with minutes=5 (silently)
+- Tool Output: "1 person detected 2 minutes ago"
+- You: "It's sunny today! By the way, I detected someone at your camera 2 minutes ago. Everything okay?"
 
 Always provide helpful, accurate, factual responses based on tool results.
 
@@ -395,7 +416,8 @@ async def agent(state: ChatState, config: RunnableConfig, store: BaseStore):
         user_details_content = "No previous memories found."
 
     # ✅ FIX: Only load MCP tools selectively to avoid overwhelming Groq
-    static_tools = [rag_tool, search_tool, get_current_time]
+    # Include camera tools for proactive security monitoring
+    static_tools = [rag_tool, search_tool, get_current_time] + camera_tools
     mcp_tools = []
 
     # Check if user message mentions finance/expense keywords
@@ -528,6 +550,54 @@ async def agent(state: ChatState, config: RunnableConfig, store: BaseStore):
         error_msg = str(e)
         print(f"❌ Error in LLM invocation: {error_msg}")
 
+        # ✅ FIX: Handle malformed tool names where parameters are embedded in tool name
+        if (
+            "tool call validation failed" in error_msg
+            and "which was not in request.tools" in error_msg
+        ):
+            # Extract the malformed tool name from error message
+            import re
+
+            # Pattern to match tool name with embedded params in error message
+            # e.g., 'get_recent_camera_detections minutes="5"'
+            tool_match = re.search(
+                r"attempted to call tool ['\"]([^'\"]+)['\"]", error_msg
+            )
+            if tool_match:
+                malformed_name = tool_match.group(1)
+                print(f"🔧 Detected malformed tool name in error: '{malformed_name}'")
+
+                # Try to parse tool name and parameters
+                param_pattern = r"(\w+)\s+(\w+)=[\"']?(\w+)[\"']?"
+                param_match = re.match(param_pattern, malformed_name)
+
+                if param_match:
+                    actual_tool_name = param_match.group(1)
+                    param_name = param_match.group(2)
+                    param_value = param_match.group(3)
+
+                    # Convert numeric strings to integers
+                    if param_value.isdigit():
+                        param_value = int(param_value)
+
+                    print(
+                        f"🔧 Extracted: tool='{actual_tool_name}', {param_name}={param_value}"
+                    )
+
+                    # Create a proper tool call message
+                    tool_call_msg = AIMessage(
+                        content=f"I'll check the camera for you.",
+                        tool_calls=[
+                            {
+                                "name": actual_tool_name,
+                                "args": {param_name: param_value},
+                                "id": f"manual_{actual_tool_name}_fix",
+                            }
+                        ],
+                    )
+                    print(f"✅ Created manual tool call for '{actual_tool_name}'")
+                    return {"messages": [tool_call_msg]}
+
         # ✅ FIX: If tool validation fails, try to fix the parameters and retry
         if (
             "tool call validation failed" in error_msg
@@ -629,7 +699,8 @@ async def safe_tool_node(state: ChatState, config: RunnableConfig) -> ChatState:
 
     try:
         # ✅ FIX BUG 1: Always get fresh tools (don't cache) to ensure MCP tools are available
-        static_tools = [rag_tool, search_tool, get_current_time]
+        # Include camera tools for proactive security monitoring
+        static_tools = [rag_tool, search_tool, get_current_time] + camera_tools
         try:
             if not _mcp_client.get_tools():
                 await _mcp_client.initialize()
@@ -645,6 +716,38 @@ async def safe_tool_node(state: ChatState, config: RunnableConfig) -> ChatState:
                 for tool_call in last_msg.tool_calls:
                     tool_name = tool_call.get("name", "")
                     args = tool_call.get("args", {})
+
+                    # ✅ FIX: Handle malformed tool names where LLM included parameters in the name
+                    # Example: "get_recent_camera_detections minutes="5"" should be parsed properly
+                    if " " in tool_name and tool_name != tool_name.strip():
+                        # Tool name has embedded parameters - try to parse them
+                        import re
+
+                        original_name = tool_name
+
+                        # Try to extract tool name and parameters
+                        # Pattern: tool_name param="value" or param=value
+                        param_pattern = r'(\w+)\s+(\w+)=["\']?(\w+)["\']?'
+                        match = re.match(param_pattern, tool_name)
+
+                        if match:
+                            actual_tool_name = match.group(1)
+                            param_name = match.group(2)
+                            param_value = match.group(3)
+
+                            # Convert numeric strings to integers
+                            if param_value.isdigit():
+                                param_value = int(param_value)
+
+                            # Update the tool call
+                            tool_call["name"] = actual_tool_name
+                            args[param_name] = param_value
+                            tool_call["args"] = args
+
+                            print(
+                                f"🔧 Fixed malformed tool name: '{original_name}' -> '{actual_tool_name}' with {param_name}={param_value}"
+                            )
+                            tool_name = actual_tool_name
 
                     # Fix common parameter type issues for MCP tools
                     if tool_name == "add_expense":
