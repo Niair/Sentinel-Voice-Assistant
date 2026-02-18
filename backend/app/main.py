@@ -16,8 +16,15 @@ from app.alert_history import alert_history
 from contextlib import asynccontextmanager
 
 
+# Global instances for access across the app
+monitoring_worker = None
+alert_processor = None
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global monitoring_worker, alert_processor
+
     # Startup
     monitoring_worker = MonitoringWorker()
     alert_processor = AlertProcessor()
@@ -27,7 +34,8 @@ async def lifespan(app: FastAPI):
     yield
 
     # Shutdown (if needed)
-    monitoring_worker.stop()
+    if monitoring_worker:
+        monitoring_worker.stop()
 
 
 app = FastAPI(title="Sentinel AI Backend", lifespan=lifespan)
@@ -544,8 +552,9 @@ async def get_camera_status():
         - WebSocket connections
         - Recent detections
     """
-    from app.monitoring_worker import MonitoringWorker
     from app.detection import detector
+
+    global monitoring_worker
 
     try:
         # Get detector status
@@ -554,12 +563,15 @@ async def get_camera_status():
         # Get WebSocket connections
         ws_connections = alert_ws_manager.get_connection_count()
 
-        # Try to get monitoring worker status
-        monitoring_status = {
-            "running": False,
-            "camera_available": False,
-            "message": "Monitoring worker not initialized",
-        }
+        # Get monitoring worker status from the actual running instance
+        if monitoring_worker:
+            monitoring_status = monitoring_worker.get_status()
+        else:
+            monitoring_status = {
+                "running": False,
+                "camera_available": False,
+                "message": "Monitoring worker not initialized",
+            }
 
         return {
             "success": True,
