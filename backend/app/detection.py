@@ -165,11 +165,13 @@ class ObjectDetector:
         # Determine threat level
         threat_level = "none"
         if persons:
-            threat_level = "low"  # Person detected
-        if len(persons) > 2:
-            threat_level = "medium"  # Multiple people
+            threat_level = (
+                "medium"  # Person detected (was "low" - changed for notifications)
+            )
+        if len(persons) > 1:
+            threat_level = "high"  # Multiple people (was > 2 and "medium")
         if vehicles and persons:
-            threat_level = "medium"  # Vehicle + person
+            threat_level = "high"  # Vehicle + person (was "medium")
 
         return {
             "timestamp": datetime.utcnow().isoformat(),

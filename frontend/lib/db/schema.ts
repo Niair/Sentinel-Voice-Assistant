@@ -168,3 +168,65 @@ export const stream = pgTable(
 );
 
 export type Stream = InferSelectModel<typeof stream>;
+
+// ============================================================================
+// SMART SECURITY ALERT SYSTEM
+// ============================================================================
+
+export const alertSnapshots = pgTable("AlertSnapshot", {
+  id: uuid("id").primaryKey().notNull().defaultRandom(),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+  expiresAt: timestamp("expiresAt").notNull(),
+  
+  // Image data (JPEG compressed)
+  imageData: text("imageData").notNull(), // Base64 encoded
+  thumbnail: text("thumbnail"), // Base64 encoded, 200x150px
+  
+  // Detection metadata
+  detectionBoxes: json("detectionBoxes").$type<Array<{
+    class: string;
+    confidence: number;
+    bbox: { x1: number; y1: number; x2: number; y2: number };
+  }>>(),
+  
+  // Camera context
+  cameraId: varchar("cameraId", { length: 64 }).notNull().default("camera_0"),
+  frameDimensions: json("frameDimensions").$type<{ width: number; height: number }>(),
+  
+  // User ownership
+  userId: uuid("userId").references(() => user.id),
+});
+
+export type AlertSnapshot = InferSelectModel<typeof alertSnapshots>;
+
+export const smartNotifications = pgTable("SmartNotification", {
+  id: uuid("id").primaryKey().notNull().defaultRandom(),
+  snapshotId: uuid("snapshotId")
+    .notNull()
+    .references(() => alertSnapshots.id, { onDelete: "cascade" }),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+  
+  // Alert classification
+  severity: varchar("severity", { enum: ["LOW", "MEDIUM", "HIGH"] }).notNull(),
+  triggerReason: text("triggerReason"), // Why triggered: "3+ people"
+  
+  // AI-generated content
+  aiDescription: text("aiDescription"), // Natural language description
+  aiConfidence: varchar("aiConfidence", { length: 10 }),
+  
+  // Actionable intelligence
+  suggestedAction: text("suggestedAction"), // "Verify identity"
+  
+  // User interaction
+  acknowledged: boolean("acknowledged").notNull().default(false),
+  viewedAt: timestamp("viewedAt"),
+  
+  // For research metrics
+  processingTimeMs: varchar("processingTimeMs", { length: 20 }),
+  apiCostUsd: varchar("apiCostUsd", { length: 20 }),
+  
+  // User ownership
+  userId: uuid("userId").references(() => user.id),
+});
+
+export type SmartNotification = InferSelectModel<typeof smartNotifications>;

@@ -18,7 +18,7 @@ uv pip install -r requirements.txt
 
 # start
 backend: uv run python -m app.main
-frontend: pnpm dev
+frontend: pnpm dev 
 
 -----------------------------------------------------------------------------------
 
@@ -68,3 +68,5 @@ backend> set PYTHONPATH=. && python tests\test_event_bus.py
 test:
 
 backend> set PYTHONPATH=. && python tests/test_database_connection.py
+
+ok 

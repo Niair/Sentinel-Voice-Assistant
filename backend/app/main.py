@@ -30,8 +30,10 @@ async def lifespan(app: FastAPI):
     global monitoring_worker, alert_processor
 
     # Startup
-    monitoring_worker = MonitoringWorker()
-    alert_processor = AlertProcessor()
+    monitoring_worker = MonitoringWorker(poll_interval=10.0)  # Check every 10 seconds
+    alert_processor = AlertProcessor(
+        cooldown_seconds=60
+    )  # 1 minute between duplicate alerts
     asyncio.create_task(monitoring_worker.start())
     asyncio.create_task(alert_processor.start())
 

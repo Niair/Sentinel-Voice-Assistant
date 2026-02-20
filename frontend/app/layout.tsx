@@ -4,7 +4,9 @@ import Script from "next/script";
 import { Suspense } from "react";
 import { AppSidebar } from "@/components/app-sidebar";
 import { DataStreamProvider } from "@/components/data-stream-provider";
+import { NotificationProvider } from "@/components/notification-provider";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import { Toaster } from "@/components/ui/sonner";
 import { auth } from "./(auth)/auth";
 
 export const metadata = {
@@ -20,9 +22,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           strategy="beforeInteractive"
         />
         <DataStreamProvider>
-          <Suspense fallback={<div className="flex h-dvh" />}>
-            <SidebarWrapper>{children}</SidebarWrapper>
-          </Suspense>
+          <NotificationProvider>
+            <Suspense fallback={<div className="flex h-dvh" />}>
+              <SidebarWrapper>{children}</SidebarWrapper>
+            </Suspense>
+            <Toaster position="top-right" />
+          </NotificationProvider>
         </DataStreamProvider>
       </body>
     </html>

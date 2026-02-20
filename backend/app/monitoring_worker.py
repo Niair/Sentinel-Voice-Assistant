@@ -73,6 +73,27 @@ class MonitoringWorker:
         self._retry_count = 0
         self._max_retries_before_wait = 3  # Try 3 times quickly, then wait 10s
 
+        # Smart notification tracking to prevent spam
+        self._last_person_count = 0
+        self._last_notification_time = None
+        self._session_active = False
+        self._notification_cooldown = 300  # 5 minutes between notifications
+
+        # Anti-spam for camera status notifications
+        self._has_sent_connected_notification = False
+        self._last_status_notification_time = None
+        self._status_notification_cooldown = (
+            300  # 5 minutes between status notifications
+        )
+
+        # Smart person tracking for intelligent notifications
+        self._person_count_history = []  # Last 10 frames for pattern detection
+        self._last_gemini_analysis_time = None
+        self._gemini_analysis_cooldown = 30  # Analyze with Gemini every 30 seconds max
+        self._last_scene_description = ""
+        self._last_threat_assessment = None
+        self._vision_enabled = True  # Toggle for Gemini Vision analysis
+
     async def start(self) -> None:
         """
         Entry point for the background task.
@@ -232,14 +253,142 @@ class MonitoringWorker:
                 self._last_camera_status = "disconnected"
             return
 
+        # Store frame for vision analysis tools
+        from app.camera_tools import set_captured_frame
+
+        set_captured_frame(frame)
+
         # Run YOLO detection
         detection_result = detector.detect_security_threats(frame)
 
         # Check if we have detections
-        if detection_result["total_detections"] > 0:
-            self._last_detection_time = datetime.utcnow()
+        persons_count = len(detection_result["persons"])
+        vehicles_count = len(detection_result["vehicles"])
+        animals_count = len(detection_result["animals"])
 
-            # Create alert event
+        # Track person count history for pattern detection
+        self._person_count_history.append(persons_count)
+        if len(self._person_count_history) > 10:
+            self._person_count_history.pop(0)
+
+        # Smart notification logic - only notify on suspicious/important activity
+        current_time = datetime.utcnow()
+        should_notify = False
+        notification_reason = ""
+        threat_assessment = ""
+        gemini_description = None
+
+        # Intelligent Gemini Vision analysis (rate-limited)
+        if persons_count > 0 and self._vision_enabled:
+            can_analyze = True
+            if self._last_gemini_analysis_time:
+                time_since_last_analysis = (
+                    current_time - self._last_gemini_analysis_time
+                ).total_seconds()
+                if time_since_last_analysis < self._gemini_analysis_cooldown:
+                    can_analyze = False
+
+            if can_analyze:
+                gemini_description = await self._analyze_scene_with_gemini(frame)
+                self._last_gemini_analysis_time = current_time
+
+        if persons_count > 0:
+            self._last_detection_time = current_time
+
+            # Assess threat level and importance
+            is_suspicious = False
+            importance_score = 0
+
+            # Factor 1: Multiple people (could be crowd or intrusion)
+            if persons_count >= 3:
+                is_suspicious = True
+                importance_score += 3
+                threat_assessment = f"Multiple people detected ({persons_count}) - possible intrusion or gathering"
+
+            # Factor 2: Person + Vehicle (suspicious combo)
+            elif persons_count > 0 and vehicles_count > 0:
+                is_suspicious = True
+                importance_score += 2
+                threat_assessment = (
+                    "Person near vehicle - check for suspicious activity"
+                )
+
+            # Factor 3: Animal detection (unusual)
+            elif animals_count > 0 and persons_count == 0:
+                is_suspicious = True
+                importance_score += 1
+                threat_assessment = "Animal detected in monitored area"
+
+            # Factor 4: Rapid person count change (someone joined/left quickly)
+            elif (
+                self._session_active
+                and abs(persons_count - self._last_person_count) >= 2
+            ):
+                is_suspicious = True
+                importance_score += 2
+                if persons_count > self._last_person_count:
+                    threat_assessment = f"Multiple people joined suddenly ({self._last_person_count} -> {persons_count})"
+                else:
+                    threat_assessment = f"Multiple people left suddenly ({self._last_person_count} -> {persons_count})"
+
+            # Factor 5: New session with single person (notify but lower priority)
+            elif not self._session_active and persons_count == 1:
+                # Only notify if enough time passed since last notification
+                if self._last_notification_time:
+                    time_since_last = (
+                        current_time - self._last_notification_time
+                    ).total_seconds()
+                    if time_since_last > self._notification_cooldown:
+                        is_suspicious = True
+                        importance_score += 1
+                        threat_assessment = "Person entered monitored area"
+                else:
+                    is_suspicious = True
+                    importance_score += 1
+                    threat_assessment = "Person entered monitored area"
+
+            # Factor 6: Use Gemini's threat assessment if available
+            if gemini_description and "THREAT DETECTED" in gemini_description:
+                is_suspicious = True
+                importance_score += 3
+                self._last_threat_assessment = gemini_description
+                logger.warning(
+                    f"[CAMERA] Gemini detected threat: {gemini_description[:100]}"
+                )
+
+            # Decide whether to notify based on importance
+            if is_suspicious and importance_score >= 2:
+                should_notify = True
+                notification_reason = threat_assessment
+                logger.info(f"[CAMERA] SUSPICIOUS: {threat_assessment}")
+            elif is_suspicious and importance_score == 1:
+                # Lower priority - check cooldown
+                if self._last_notification_time:
+                    time_since_last = (
+                        current_time - self._last_notification_time
+                    ).total_seconds()
+                    if time_since_last > self._notification_cooldown:
+                        should_notify = True
+                        notification_reason = threat_assessment
+                        logger.info(f"[CAMERA] Activity: {threat_assessment}")
+                else:
+                    should_notify = True
+                    notification_reason = threat_assessment
+                    logger.info(f"[CAMERA] Activity: {threat_assessment}")
+
+            self._session_active = True
+
+        else:
+            # No persons detected - session ended
+            if self._session_active:
+                self._session_active = False
+                logger.info("[CAMERA] Area cleared - no persons detected")
+
+        # Update tracking
+        self._last_person_count = persons_count
+
+        # Create alert event (always save to history, but conditionally notify)
+        if detection_result["total_detections"] > 0:
             threat_level = detection_result["threat_level"]
 
             # Determine severity based on threat level
@@ -250,21 +399,40 @@ class MonitoringWorker:
             else:
                 severity = Severity.LOW
 
-            # Build description
-            persons_count = len(detection_result["persons"])
-            vehicles_count = len(detection_result["vehicles"])
+            # Build description based on what's detected
+            if persons_count == 1:
+                description = "👤 Person detected by camera"
+            elif persons_count > 1:
+                description = f"👥 {persons_count} people detected by camera"
+            elif vehicles_count > 0:
+                description = f"🚗 {vehicles_count} vehicle(s) detected"
+            elif animals_count > 0:
+                description = f"🐕 Animal detected"
+            else:
+                description = "Activity detected"
 
-            description_parts = []
-            if persons_count > 0:
-                description_parts.append(f"{persons_count} person(s) detected")
-            if vehicles_count > 0:
-                description_parts.append(f"{vehicles_count} vehicle(s) detected")
+            # Add urgency for high threat
+            if threat_level == "high":
+                description = f"⚠️ {description} - Multiple detections!"
 
-            description = (
-                " | ".join(description_parts)
-                if description_parts
-                else "Activity detected"
-            )
+            # Enhance description with Gemini analysis if available
+            if gemini_description:
+                if "THREAT DETECTED" in gemini_description:
+                    # Extract key info from threat assessment
+                    threat_type = "unknown"
+                    if "weapon" in gemini_description.lower():
+                        threat_type = "weapon"
+                    elif "knife" in gemini_description.lower():
+                        threat_type = "knife"
+                    elif "suspicious" in gemini_description.lower():
+                        threat_type = "suspicious object"
+                    description = (
+                        f"🚨 THREAT: {threat_type.upper()} detected! {description}"
+                    )
+                    severity = Severity.HIGH
+                elif len(gemini_description) < 200:
+                    # Add context from Gemini's scene description
+                    description = f"{description} | {gemini_description}"
 
             # Create event
             event = MonitoringEventCreate(
@@ -276,7 +444,7 @@ class MonitoringWorker:
                     [d["confidence"] for d in detection_result["all_detections"]]
                     + [0.5]
                 ),
-                timestamp=datetime.utcnow(),
+                timestamp=current_time,
                 metadata={
                     "camera_index": self.camera_index,
                     "threat_level": threat_level,
@@ -289,10 +457,17 @@ class MonitoringWorker:
             # Publish to event bus
             await publish_event(event)
 
-            # Broadcast via WebSocket for real-time notifications
-            await self._broadcast_detection_alert(event, detection_result)
+            # Broadcast via WebSocket ONLY for important notifications
+            if should_notify:
+                await self._broadcast_detection_alert(
+                    event, detection_result, notification_reason
+                )
+                self._last_notification_time = current_time
+                logger.info(
+                    f"[CAMERA] Notification sent: {description} (reason: {notification_reason})"
+                )
 
-            # Store in alert history
+            # Store in alert history (always save)
             await alert_history.add_alert(
                 {
                     "camera_id": f"camera_{self.camera_index}",
@@ -308,27 +483,47 @@ class MonitoringWorker:
             )
 
     async def _broadcast_detection_alert(
-        self, event: MonitoringEventCreate, detection_result: dict
+        self,
+        event: MonitoringEventCreate,
+        detection_result: dict,
+        notification_reason: str = "",
     ):
-        """Broadcast detection alert via WebSocket"""
+        """Broadcast detection alert via WebSocket with smart reasoning"""
+
+        # Ensure we have a description
+        base_description = event.description or "Camera Alert"
+
+        # Build smart description with reason
+        if notification_reason:
+            smart_description = f"{base_description} | {notification_reason}"
+        else:
+            smart_description = base_description
+
         alert_data = {
             "type": "detection",
             "event_type": "detection",
-            "severity": event.severity.value,
-            "description": event.description,
-            "timestamp": event.timestamp.isoformat(),
+            "severity": event.severity.value if event.severity else "MEDIUM",
+            "description": smart_description,
+            "timestamp": event.timestamp.isoformat()
+            if event.timestamp
+            else datetime.utcnow().isoformat(),
             "camera_index": self.camera_index,
-            "threat_level": detection_result["threat_level"],
-            "persons_detected": len(detection_result["persons"]),
-            "vehicles_detected": len(detection_result["vehicles"]),
-            "total_detections": detection_result["total_detections"],
+            "threat_level": detection_result.get("threat_level", "low"),
+            "persons_detected": len(detection_result.get("persons", [])),
+            "vehicles_detected": len(detection_result.get("vehicles", [])),
+            "total_detections": detection_result.get("total_detections", 0),
+            "reason": notification_reason or "Activity detected",
         }
 
         await alert_ws_manager.broadcast_alert(alert_data)
-        logger.info(f"[CAMERA] Detection alert broadcast: {event.description}")
+        logger.info(f"[CAMERA] Smart alert broadcast: {smart_description}")
+        logger.debug(f"[CAMERA] Full alert data: {alert_data}")
 
     async def _emit_camera_connected(self) -> None:
         """Emit event when camera is successfully connected and working"""
+        # Only send WebSocket notification ONCE per app session
+        should_broadcast = not self._has_sent_connected_notification
+
         event = MonitoringEventCreate(
             source="system",
             event_type="camera_connected",
@@ -344,21 +539,28 @@ class MonitoringWorker:
         )
         await publish_event(event)
 
-        # Broadcast via WebSocket
-        await alert_ws_manager.broadcast_alert(
-            {
-                "type": "camera_status",
-                "event_type": "camera_connected",
-                "severity": "LOW",
-                "description": "Camera connected and working!",
-                "timestamp": datetime.utcnow().isoformat(),
-                "camera_index": self.camera_index,
-                "status": "connected",
-                "message": "Camera is ready for monitoring",
-            }
-        )
+        # Only broadcast via WebSocket once per session (prevents spam)
+        if should_broadcast:
+            await alert_ws_manager.broadcast_alert(
+                {
+                    "type": "camera_status",
+                    "event_type": "camera_connected",
+                    "severity": "LOW",
+                    "description": "Camera connected and working!",
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "camera_index": self.camera_index,
+                    "status": "connected",
+                    "message": "Camera is ready for monitoring",
+                }
+            )
+            self._has_sent_connected_notification = True
+            logger.info("[CAMERA] Camera connected notification sent (first time)")
+        else:
+            logger.info(
+                "[CAMERA] Camera reconnected (notification suppressed to prevent spam)"
+            )
 
-        # Add to alert history
+        # Always add to alert history (for logs/debugging)
         await alert_history.add_alert(
             {
                 "camera_id": f"camera_{self.camera_index}",
@@ -369,10 +571,22 @@ class MonitoringWorker:
             }
         )
 
-        logger.info("[CAMERA] Camera connected notification sent")
-
     async def _emit_camera_unavailable(self, error_message: str) -> None:
         """Emit a system event when camera is not accessible"""
+        # Debounce: Only send status notification every 5 minutes
+        current_time = datetime.utcnow()
+        should_broadcast = True
+
+        if self._last_status_notification_time:
+            time_since_last = (
+                current_time - self._last_status_notification_time
+            ).total_seconds()
+            if time_since_last < self._status_notification_cooldown:
+                should_broadcast = False
+                logger.debug(
+                    f"[CAMERA] Unavailable notification debounced ({time_since_last:.0f}s since last)"
+                )
+
         event = MonitoringEventCreate(
             source="system",
             event_type="camera_unavailable",
@@ -388,22 +602,24 @@ class MonitoringWorker:
         )
         await publish_event(event)
 
-        # Broadcast via WebSocket
-        await alert_ws_manager.broadcast_alert(
-            {
-                "type": "camera_status",
-                "event_type": "camera_unavailable",
-                "severity": "MEDIUM",
-                "description": error_message,
-                "timestamp": datetime.utcnow().isoformat(),
-                "camera_index": self.camera_index,
-                "status": "unavailable",
-                "action_required": "Connect a USB camera or check permissions",
-                "retry_in_seconds": 10,
-            }
-        )
+        # Only broadcast if debouncing allows
+        if should_broadcast:
+            await alert_ws_manager.broadcast_alert(
+                {
+                    "type": "camera_status",
+                    "event_type": "camera_unavailable",
+                    "severity": "MEDIUM",
+                    "description": error_message,
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "camera_index": self.camera_index,
+                    "status": "unavailable",
+                    "action_required": "Connect a USB camera or check permissions",
+                    "retry_in_seconds": 10,
+                }
+            )
+            self._last_status_notification_time = current_time
 
-        # Add to alert history
+        # Always add to alert history
         await alert_history.add_alert(
             {
                 "camera_id": f"camera_{self.camera_index}",
@@ -414,10 +630,27 @@ class MonitoringWorker:
             }
         )
 
-        logger.warning("[CAMERA] Camera unavailable notification sent")
+        if should_broadcast:
+            logger.warning("[CAMERA] Camera unavailable notification sent")
+        else:
+            logger.debug("[CAMERA] Camera unavailable (notification debounced)")
 
     async def _emit_camera_disconnected(self) -> None:
         """Emit event when camera disconnects during operation"""
+        # Debounce: Only send status notification every 5 minutes
+        current_time = datetime.utcnow()
+        should_broadcast = True
+
+        if self._last_status_notification_time:
+            time_since_last = (
+                current_time - self._last_status_notification_time
+            ).total_seconds()
+            if time_since_last < self._status_notification_cooldown:
+                should_broadcast = False
+                logger.debug(
+                    f"[CAMERA] Disconnected notification debounced ({time_since_last:.0f}s since last)"
+                )
+
         event = MonitoringEventCreate(
             source="system",
             event_type="camera_disconnected",
@@ -432,21 +665,23 @@ class MonitoringWorker:
         )
         await publish_event(event)
 
-        # Broadcast via WebSocket
-        await alert_ws_manager.broadcast_alert(
-            {
-                "type": "camera_status",
-                "event_type": "camera_disconnected",
-                "severity": "MEDIUM",
-                "description": "Camera disconnected unexpectedly",
-                "timestamp": datetime.utcnow().isoformat(),
-                "camera_index": self.camera_index,
-                "status": "disconnected",
-                "retry_in_seconds": 10,
-            }
-        )
+        # Only broadcast if debouncing allows
+        if should_broadcast:
+            await alert_ws_manager.broadcast_alert(
+                {
+                    "type": "camera_status",
+                    "event_type": "camera_disconnected",
+                    "severity": "MEDIUM",
+                    "description": "Camera disconnected unexpectedly",
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "camera_index": self.camera_index,
+                    "status": "disconnected",
+                    "retry_in_seconds": 10,
+                }
+            )
+            self._last_status_notification_time = current_time
 
-        # Add to alert history
+        # Always add to alert history
         await alert_history.add_alert(
             {
                 "camera_id": f"camera_{self.camera_index}",
@@ -457,7 +692,58 @@ class MonitoringWorker:
             }
         )
 
-        logger.warning("[CAMERA] Camera disconnected notification sent")
+        if should_broadcast:
+            logger.warning("[CAMERA] Camera disconnected notification sent")
+        else:
+            logger.debug("[CAMERA] Camera disconnected (notification debounced)")
+
+    async def _analyze_scene_with_gemini(self, frame) -> str:
+        """
+        Use Gemini Vision to analyze the current scene for threats and context.
+
+        This is called when persons are detected by YOLO, but rate-limited
+        to avoid excessive API calls (once every 30 seconds max).
+
+        Args:
+            frame: OpenCV frame to analyze
+
+        Returns:
+            Analysis result string, or empty string if analysis failed
+        """
+        try:
+            from app.vision_tools import analyze_frame_for_threats, describe_scene
+            import base64
+
+            # Encode frame to base64
+            import cv2
+
+            _, buffer = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+            frame_base64 = base64.b64encode(bytes(buffer)).decode("utf-8")
+
+            # First, check for threats
+            threat_result = await analyze_frame_for_threats.ainvoke(
+                {"frame_base64": frame_base64}
+            )
+
+            # If threat detected, use that as the description
+            if "THREAT DETECTED" in threat_result:
+                self._last_threat_assessment = threat_result
+                logger.warning(
+                    f"[CAMERA-VISION] Threat detected: {threat_result[:100]}"
+                )
+                return threat_result
+
+            # Otherwise, get a scene description
+            scene_result = await describe_scene.ainvoke({"frame_base64": frame_base64})
+            self._last_scene_description = scene_result
+
+            logger.info(f"[CAMERA-VISION] Scene: {scene_result[:80]}...")
+            return scene_result
+
+        except Exception as e:
+            logger.error(f"[CAMERA-VISION] Gemini analysis failed: {e}")
+            # Don't let Gemini failures break the monitoring
+            return ""
 
     def get_status(self) -> dict:
         """Get current monitoring status"""
@@ -479,6 +765,11 @@ class MonitoringWorker:
             "last_detection": self._last_detection_time.isoformat()
             if self._last_detection_time
             else None,
+            "last_scene_description": self._last_scene_description,
+            "vision_enabled": self._vision_enabled,
+            "person_count_history": self._person_count_history[-5:]
+            if self._person_count_history
+            else [],
         }
 
     async def open_camera_manual(self) -> bool:

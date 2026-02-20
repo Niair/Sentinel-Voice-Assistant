@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { useSWRConfig } from "swr";
 import { unstable_serialize } from "swr/infinite";
 import { PlusIcon, TrashIcon } from "@/components/icons";
+import { NotificationBell } from "@/components/notification-bell";
 import {
   getChatHistoryPaginationKey,
   SidebarHistory,
@@ -79,6 +80,8 @@ export function AppSidebar({ user }: { user: User | undefined }) {
                 </span>
               </Link>
               <div className="flex flex-row gap-1">
+                {/* Notification Bell */}
+                <NotificationBell />
                 {/* Allow guest users to delete all chats too */}
                 <Tooltip>
                   <TooltipTrigger asChild>

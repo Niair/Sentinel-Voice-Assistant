@@ -59,10 +59,9 @@ class AlertHistory:
 
             self.alerts.append(enriched_alert)
 
-            # Cleanup old alerts if exceeded max
+            # Cleanup old alerts if exceeded max (silently)
             if len(self.alerts) > self.max_history:
-                removed = self.alerts.pop(0)
-                print(f"[INFO] Removed old alert from history: {removed.get('id')}")
+                self.alerts.pop(0)
 
             # Persist to file if configured
             if self.persist_file:
