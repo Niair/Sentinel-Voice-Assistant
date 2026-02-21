@@ -28,4 +28,9 @@ dependencies = [
     "faiss-cpu>=1.7.4",
     "langchain-nvidia-ai-endpoints>=1.0.3",
     "voyageai>=0.3.7",
+    # Qwen2-VL for Security Agent
+    "transformers>=4.40.0",
+    "accelerate>=0.30.0",
+    "qwen-vl-utils>=0.0.1",
+    "pillow>=10.0.0",
 ]

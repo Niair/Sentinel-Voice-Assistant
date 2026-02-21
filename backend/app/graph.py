@@ -30,7 +30,6 @@ from app.mcp import SafeMCPClient
 from langgraph.store.postgres import PostgresStore
 from dotenv import load_dotenv
 from app.camera_tools import camera_tools
-from app.vision_tools import vision_tools
 
 load_dotenv()
 
@@ -469,9 +468,7 @@ async def agent(state: ChatState, config: RunnableConfig, store: BaseStore):
 
     # ✅ FIX: Only load MCP tools selectively to avoid overwhelming Groq
     # Include camera tools and vision tools for proactive security monitoring
-    static_tools = (
-        [rag_tool, search_tool, get_current_time] + camera_tools + vision_tools
-    )
+    static_tools = [rag_tool, search_tool, get_current_time] + camera_tools
     mcp_tools = []
 
     # Check if user message mentions finance/expense keywords
@@ -754,9 +751,7 @@ async def safe_tool_node(state: ChatState, config: RunnableConfig) -> ChatState:
     try:
         # ✅ FIX BUG 1: Always get fresh tools (don't cache) to ensure MCP tools are available
         # Include camera tools and vision tools for proactive security monitoring
-        static_tools = (
-            [rag_tool, search_tool, get_current_time] + camera_tools + vision_tools
-        )
+        static_tools = [rag_tool, search_tool, get_current_time] + camera_tools
         try:
             if not _mcp_client.get_tools():
                 await _mcp_client.initialize()
