@@ -1,15 +1,13 @@
-import os
-from dotenv import load_dotenv
-from langchain_ollama import ChatOllama           # preferred per warning
-from langchain_core.messages import HumanMessage
+import requests
 
-load_dotenv()
+url = "http://localhost:11434/api/generate"
 
-llm = ChatOllama(
-    model="qwen3.5:cloud",
-    base_url="https://api.ollama.ai",
-    headers={"Authorization": f"Bearer {os.getenv('OLLAMA_API_KEY')}"}
-)
+data = {
+    "model": "qwen3-coder:480b-cloud",
+    "prompt": "Explain recursion in simple words.",
+    "stream": False
+}
 
-resp = llm.invoke([HumanMessage(content="Hello!")])
-print(resp.content)
+response = requests.post(url, json=data)
+
+print(response.json())

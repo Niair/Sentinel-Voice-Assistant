@@ -1,7 +1,7 @@
 # Sentinel Voice Assistant - Multi-Agent Security System
 
-**Last Updated:** 2025-02-21  
-**Version:** 1.0
+**Last Updated:** 2026-02-22  
+**Version:** 1.1
 
 ---
 
@@ -127,19 +127,39 @@ User Chat → Main Agent (Groq Llama) → Tools (Camera, Vision, MCP)
 | Service | Key Location | Purpose | Status |
 |---------|--------------|---------|--------|
 | **Groq** | `.env` | Main Agent (chat) | ✅ Working (free tier) |
-| **NVIDIA** | `.env` | Helper Agent (thinking) | ✅ Working (free credits) |
+| **NVIDIA** | `.env` | Vision Agent (security) | ✅ Working (free credits) |
+| **Ollama Cloud** | `.env` | Main/Helper Agent | ✅ Working (free tier) |
+| **OpenRouter** | `.env` | Helper Agent | ✅ Working (free models) |
 | **Google Gemini** | `.env` | Vision (backup) | ❌ Quota exhausted |
-| **OpenAI** | `.env` | Vision (optional) | Not configured |
 
 ### API Usage Distribution (Recommended)
 
 | Task | API/Model | Why? | Limits |
 |------|-----------|------|--------|
-| Casual Chat | Groq Llama-3.3-70B | Fast, good for conversation | ✅ Free tier |
-| Vision Analysis | Qwen2-VL-7B (Local) | No API limits | ✅ FREE |
-| Security Thinking | NVIDIA Thinking | Deep reasoning | ✅ Free credits |
+| Casual Chat | Groq Llama-3.3-70B OR Ollama qwen3-coder:480b-cloud | Fast, good for conversation | ✅ Free tier |
+| Vision Analysis | NVIDIA meta/llama-3.2-11b-vision-instruct | Cloud vision, no local GPU needed | ✅ Free credits |
+| Helper Agent | Ollama glm-5:cloud OR OpenRouter gemma-3-12b-it:free | Categorization & notifications | ✅ FREE |
 | Document Search | Groq Llama | Fast RAG | ✅ Free tier |
 | Web Search | DuckDuckGo | Free, no API needed | ✅ FREE |
+
+### Working Models (Tested 2026-02-22)
+
+**NVIDIA NIM:**
+- `meta/llama-3.2-11b-vision-instruct` - Vision (primary)
+- `nvidia/nemotron-nano-12b-v2-vl` - Vision (backup)
+- `meta/llama-3.1-8b-instruct` - Text
+
+**Ollama Cloud:**
+- `qwen3-coder:480b-cloud` - Thinking/coding (primary)
+- `minimax-m2.5:cloud` - Thinking
+- `kimi-k2.5:cloud` - Thinking
+- `glm-5:cloud` - General
+- `qwen3.5:cloud` - General
+
+**OpenRouter (Free):**
+- `google/gemma-3-12b-it:free` - General
+- `arcee-ai/trinity-large-preview:free` - General
+- `z-ai/glm-4.5-air:free` - General
 
 ---
 
@@ -149,9 +169,9 @@ User Chat → Main Agent (Groq Llama) → Tools (Camera, Vision, MCP)
 
 | Agent | Model | Task |
 |-------|-------|------|
-| **Main Agent** | Groq Llama-3.3-70b-versatile | User conversation, tool routing |
-| **Security Agent** | Qwen2-VL-7B (Local) | Vision analysis, threat detection |
-| **Helper Agent** | NVIDIA (Thinking) | Categorization, anti-spam, notifications |
+| **Main Agent** | Groq Llama-3.3-70b-versatile OR Ollama qwen3-coder:480b-cloud | User conversation, tool routing |
+| **Security Agent** | NVIDIA meta/llama-3.2-11b-vision-instruct | Vision analysis, threat detection |
+| **Helper Agent** | Ollama glm-5:cloud OR OpenRouter gemma-3-12b-it:free | Categorization, anti-spam, notifications |
 
 ### 4.2 Communication Flow
 
@@ -192,13 +212,14 @@ Main Agent formats response:
 
 | File | Status | Description |
 |------|--------|-------------|
-| `backend/app/agents/security_agent.py` | ✅ Created | Qwen2-VL-7B integration |
+| `backend/app/agents/security_agent.py` | ✅ Created | Qwen2-VL-7B integration (local, optional) |
 | `backend/app/agents/__init__.py` | ✅ Created | Agent package init |
 | `backend/app/monitoring_worker.py` | ✅ Modified | Anti-spam, Gemini integration |
-| `backend/app/vision_tools.py` | ✅ Modified | Gemini migration to google-genai |
+| `backend/app/vision_tools.py` | ✅ Modified | NVIDIA Vision API integration, concise prompts |
 | `backend/app/camera_tools.py` | ✅ Modified | Added 8 new tools |
 | `backend/app/graph.py` | ✅ Modified | Updated system prompt |
 | `backend/pyproject.toml` | ✅ Modified | Added dependencies |
+| `backend/tests/test_all_apis.py` | ✅ Created | Comprehensive API test script |
 | `_assets/MULTI_AGENT_SECURITY_PLAN.md` | ✅ Created | Initial plan |
 
 ### 5.2 Current Tools
@@ -225,6 +246,21 @@ Main Agent formats response:
 - `detect_activity` - Activity classification
 - `detect_emotions` - Emotional state
 - `analyze_person` - Full personal analysis
+
+### 5.3 API Test Results (2026-02-22)
+
+| API | Status | Working Models |
+|-----|--------|----------------|
+| NVIDIA NIM | ✅ WORKING | llama-3.2-11b-vision-instruct, nemotron-nano-12b-v2-vl |
+| Ollama Cloud | ✅ WORKING | qwen3-coder:480b-cloud, minimax-m2.5:cloud, glm-5:cloud |
+| OpenRouter | ✅ WORKING | gemma-3-12b-it:free, trinity-large-preview:free, glm-4.5-air:free |
+| Groq | ✅ WORKING | llama-3.3-70b-versatile |
+
+**Key Findings:**
+1. NVIDIA vision model works well - no need for local Qwen2-VL-7B
+2. Ollama Cloud uses `OllamaLLM` class (not `ChatOpenAI` with base_url)
+3. OpenRouter free models have rate limits but work
+4. All APIs tested with LangGraph integration
 
 ---
 
@@ -496,27 +532,35 @@ class SessionTracker:
 ```
 backend/app/
 ├── agents/
-│   ├── __init__.py              ✅ Already created
-│   ├── security_agent.py        ✅ Already created - Qwen2-VL-7B
-│   ├── helper_agent.py           ⏳ TO CREATE - NVIDIA categorization
+│   ├── __init__.py              ✅ Created
+│   ├── security_agent.py        ✅ Created (local Qwen2-VL, optional)
+│   ├── helper_agent.py           ⏳ TO CREATE - Ollama/OpenRouter categorization
 │   └── notification_tool.py      ⏳ TO CREATE - Smart notifications
 ├── graph.py                      ✅ Modified - Add agent routing
 ├── multi_agent_graph.py          ⏳ TO CREATE - Agent orchestration
-├── monitoring_worker.py         ✅ Modified - Anti-spam, connect Qwen2
-├── camera_tools.py               ✅ Modified - Add security agent tools
-├── vision_tools.py              ✅ Modified - Legacy support
-├── main.py                      ⏳ MODIFY - Add agent initialization
-├── detection.py                 ✅ Already exists - YOLO
-├── events.py                    ✅ Already exists - Event bus
-├── websocket_manager.py        ✅ Already exists - WebSocket
-└── mcp.py                       ✅ Already exists - MCP client
+├── monitoring_worker.py         ✅ Modified - Anti-spam
+├── camera_tools.py               ✅ Modified - Vision tools
+├── vision_tools.py              ✅ Modified - NVIDIA Vision API (concise prompts)
+├── main.py                      ✅ Exists
+├── detection.py                 ✅ Exists - YOLO
+├── events.py                    ✅ Exists - Event bus
+├── websocket_manager.py        ✅ Exists - WebSocket
+└── mcp.py                       ✅ Exists - MCP client
+
+backend/tests/
+├── test_all_apis.py             ✅ Created - Comprehensive API test
+├── test_ollama_v2.py            ✅ Created - Ollama sync test
+├── test_ollama_v3.py            ✅ Created - Ollama LangGraph test
+├── test_openrouter_api.py       ✅ Created - OpenRouter test
+└── test_nvidia_api.py           ✅ Created - NVIDIA test
 ```
 
 ### 11.2 Implementation Files
 
 | File | Purpose | Status |
 |------|---------|--------|
-| `agents/security_agent.py` | Qwen2-VL-7B integration | ✅ Created (needs testing) |
+| `vision_tools.py` | NVIDIA Vision API for security/vision | ✅ Complete |
+| `agents/security_agent.py` | Local Qwen2-VL-7B (optional backup) | ✅ Created |
 | `agents/helper_agent.py` | Categorization + anti-spam | ⏳ To create |
 | `agents/notification_tool.py` | Smart notification formatting | ⏳ To create |
 | `multi_agent_graph.py` | LangGraph agent orchestration | ⏳ To create |
@@ -525,48 +569,57 @@ backend/app/
 
 ## 12. Implementation Phases
 
-### Phase 1: Qwen2-VL-7B Security Agent ✅ (Partially Complete)
-**Goal:** Set up Qwen2-VL-7B for local vision analysis
+### Phase 1: Vision Agent (NVIDIA API) ✅ COMPLETE
+**Goal:** Set up NVIDIA Vision API for cloud-based vision analysis
 
 | Step | Task | Status |
 |------|------|--------|
-| 1.1 | Add dependencies to pyproject.toml | ✅ Done |
-| 1.2 | Create security_agent.py | ✅ Done |
-| 1.3 | Create agents/__init__.py | ✅ Done |
-| 1.4 | Install dependencies (numpy<2.0) | ✅ Done |
-| 1.5 | Test Security Agent loading | 🔄 In Progress |
-| 1.6 | Test frame analysis | ⏳ To test |
-| 1.7 | Add to camera_tools | ⏳ To create |
+| 1.1 | Configure NVIDIA API key | ✅ Done |
+| 1.2 | Create vision_tools.py | ✅ Done |
+| 1.3 | Add concise prompts to reduce redundancy | ✅ Done |
+| 1.4 | Test vision analysis | ✅ Done |
+| 1.5 | Integrate with camera_tools | ✅ Done |
 
-### Phase 2: Helper Agent with NVIDIA
+### Phase 2: API Testing & Integration ✅ COMPLETE
+**Goal:** Test and validate all available APIs
+
+| Step | Task | Status |
+|------|------|--------|
+| 2.1 | Create test_all_apis.py | ✅ Done |
+| 2.2 | Test NVIDIA API | ✅ Working |
+| 2.3 | Test Ollama Cloud API | ✅ Working |
+| 2.4 | Test OpenRouter API | ✅ Working |
+| 2.5 | Test LangGraph integration | ✅ Working |
+
+### Phase 3: Helper Agent ⏳ NEXT
 **Goal:** Create categorization agent
 
 | Step | Task | Status |
 |------|------|--------|
-| 2.1 | Create helper_agent.py | ⏳ To create |
-| 2.2 | Add notification_tool.py | ⏳ To create |
-| 2.3 | Implement anti-spam logic | ⏳ To create |
-| 2.4 | Test Helper Agent | ⏳ To test |
+| 3.1 | Create helper_agent.py | ⏳ To create |
+| 3.2 | Add notification_tool.py | ⏳ To create |
+| 3.3 | Implement anti-spam logic | ⏳ To create |
+| 3.4 | Test Helper Agent | ⏳ To test |
 
-### Phase 3: Integration with Main Graph
+### Phase 4: Integration with Main Graph
 **Goal:** Connect all agents in LangGraph
 
 | Step | Task | Status |
 |------|------|--------|
-| 3.1 | Create multi_agent_graph.py | ⏳ To create |
-| 3.2 | Add agent routing to graph.py | ⏳ To create |
-| 3.3 | Connect monitoring worker | ⏳ To create |
-| 3.4 | Test end-to-end | ⏳ To test |
+| 4.1 | Create multi_agent_graph.py | ⏳ To create |
+| 4.2 | Add agent routing to graph.py | ⏳ To create |
+| 4.3 | Connect monitoring worker | ⏳ To create |
+| 4.4 | Test end-to-end | ⏳ To test |
 
-### Phase 4: Background Monitoring Enhancement
+### Phase 5: Background Monitoring Enhancement
 **Goal:** Improve continuous monitoring
 
 | Step | Task | Status |
 |------|------|--------|
-| 4.1 | Add YOLO → Qwen2 trigger | ⏳ To create |
-| 4.2 | Smart frame sampling | ⏳ To create |
-| 4.3 | Session tracking (anti-spam) | ⏳ To create |
-| 4.4 | Test monitoring | ⏳ To test |
+| 5.1 | Add YOLO → Vision trigger | ⏳ To create |
+| 5.2 | Smart frame sampling | ⏳ To create |
+| 5.3 | Session tracking (anti-spam) | ⏳ To create |
+| 5.4 | Test monitoring | ⏳ To test |
 
 ---
 
@@ -868,17 +921,65 @@ result = qwen2(
 | Scene | "What's happening?" | Full scene analysis |
 | Threat | "Is it safe?" | Threat assessment |
 
+### Q11: Can OpenRouter work with all free models listed?
+**Answer:** Most work, but some have rate limits or provider issues. Tested working models:
+- ✅ `google/gemma-3-12b-it:free`
+- ✅ `arcee-ai/trinity-large-preview:free`
+- ✅ `z-ai/glm-4.5-air:free`
+- ⚠️ `meta-llama/llama-3.3-70b-instruct:free` - Rate limited (429)
+- ⚠️ `qwen/qwen3-next-80b-a3b-instruct:free` - Provider issues (402)
+
+### Q12: Does using NVIDIA for helper agent affect security agent?
+**Answer:** NO! Each agent makes separate API calls. You can use:
+- **Security Agent:** `meta/llama-3.2-11b-vision-instruct` (vision)
+- **Helper Agent:** `meta/llama-3.1-8b-instruct` (text)
+
+They are independent - using one doesn't affect the other's quota or availability.
+
+### Q13: How to use Ollama Cloud API correctly?
+**Answer:** Use `OllamaLLM` from `langchain_ollama`, NOT `ChatOpenAI`:
+```python
+from langchain_ollama import OllamaLLM
+
+llm = OllamaLLM(model="qwen3-coder:480b-cloud")
+response = llm.invoke("Your prompt")
+```
+
+Cloud models available: `qwen3-coder:480b-cloud`, `minimax-m2.5:cloud`, `kimi-k2.5:cloud`, `glm-5:cloud`
+
+### Q14: Which Ollama cloud model is best for what?
+| Model | Best For | Notes |
+|-------|----------|-------|
+| `qwen3-coder:480b-cloud` | Coding, complex reasoning | Large model, very capable |
+| `minimax-m2.5:cloud` | General chat, thinking | Good balance |
+| `glm-5:cloud` | Fast responses | Lighter model |
+| `kimi-k2.5:cloud` | Long context | Good for documents |
+
 ---
 
 ## 🚀 Next Steps (Continue from here)
 
-1. **Test Qwen2-VL-7B loading** - Currently in progress
-2. **Complete Security Agent integration** - Add to camera_tools
-3. **Create Helper Agent** - helper_agent.py with NVIDIA
-4. **Create Notification Tool** - notification_tool.py
-5. **Create multi_agent_graph.py** - Agent orchestration
-6. **Test end-to-end** - Full integration test
-7. **Background monitoring** - YOLO → Qwen2 trigger
+### Completed ✅
+1. **API Testing** - All APIs tested and working (NVIDIA, Ollama, OpenRouter, Groq)
+2. **Vision Agent** - NVIDIA vision API integrated with concise prompts
+3. **Vision Tools** - 8 vision tools created with anti-redundancy prompts
+4. **Camera Tools** - 11 camera tools integrated
+5. **Test Scripts** - Comprehensive API test suite created
+
+### In Progress 🔄
+- Testing updated vision tools with real camera input
+
+### To Do ⏳
+1. **Create Helper Agent** - helper_agent.py with Ollama/OpenRouter
+2. **Create Notification Tool** - notification_tool.py
+3. **Create multi_agent_graph.py** - Agent orchestration
+4. **Test end-to-end** - Full integration test
+5. **Background monitoring** - YOLO → Vision trigger
+
+### Local Qwen2-VL-7B Model (Optional)
+If you want to delete the local model (not needed with NVIDIA Vision API):
+- Location: `C:\Users\Nihal\.cache\huggingface\hub\`
+- Look for: `models--Qwen--Qwen2-VL-7B-Instruct`
 
 ---
 

@@ -7448,5 +7448,302 @@
       "persons_count": 1,
       "vehicles_count": 0
     }
+  },
+  {
+    "timestamp": "2026-02-22T10:17:31.443203",
+    "severity": "medium",
+    "description": "\ud83d\udc64 Person detected by camera",
+    "source": "camera",
+    "event_type": "detection",
+    "confidence": 0.897,
+    "metadata": {
+      "camera_index": 0,
+      "threat_level": "medium",
+      "detections": [
+        {
+          "class": "person",
+          "class_id": 0,
+          "confidence": 0.897,
+          "bbox": {
+            "x1": 1,
+            "y1": 0,
+            "x2": 393,
+            "y2": 420
+          }
+        }
+      ],
+      "persons_count": 1,
+      "vehicles_count": 0
+    }
+  },
+  {
+    "timestamp": "2026-02-22T10:18:39.856828",
+    "severity": "medium",
+    "description": "\ud83d\udc64 Person detected by camera",
+    "source": "camera",
+    "event_type": "detection",
+    "confidence": 0.897,
+    "metadata": {
+      "camera_index": 0,
+      "threat_level": "medium",
+      "detections": [
+        {
+          "class": "person",
+          "class_id": 0,
+          "confidence": 0.897,
+          "bbox": {
+            "x1": 1,
+            "y1": 0,
+            "x2": 393,
+            "y2": 420
+          }
+        }
+      ],
+      "persons_count": 1,
+      "vehicles_count": 0
+    }
+  },
+  {
+    "timestamp": "2026-02-22T10:19:49.885070",
+    "severity": "medium",
+    "description": "\ud83d\udc64 Person detected by camera",
+    "source": "camera",
+    "event_type": "detection",
+    "confidence": 0.897,
+    "metadata": {
+      "camera_index": 0,
+      "threat_level": "medium",
+      "detections": [
+        {
+          "class": "person",
+          "class_id": 0,
+          "confidence": 0.897,
+          "bbox": {
+            "x1": 1,
+            "y1": 0,
+            "x2": 393,
+            "y2": 420
+          }
+        }
+      ],
+      "persons_count": 1,
+      "vehicles_count": 0
+    }
+  },
+  {
+    "timestamp": "2026-02-22T10:20:56.933288",
+    "severity": "medium",
+    "description": "\ud83d\udc64 Person detected by camera",
+    "source": "camera",
+    "event_type": "detection",
+    "confidence": 0.897,
+    "metadata": {
+      "camera_index": 0,
+      "threat_level": "medium",
+      "detections": [
+        {
+          "class": "person",
+          "class_id": 0,
+          "confidence": 0.897,
+          "bbox": {
+            "x1": 1,
+            "y1": 0,
+            "x2": 393,
+            "y2": 420
+          }
+        }
+      ],
+      "persons_count": 1,
+      "vehicles_count": 0
+    }
+  },
+  {
+    "timestamp": "2026-02-22T10:22:03.709910",
+    "severity": "medium",
+    "description": "\ud83d\udc64 Person detected by camera",
+    "source": "camera",
+    "event_type": "detection",
+    "confidence": 0.897,
+    "metadata": {
+      "camera_index": 0,
+      "threat_level": "medium",
+      "detections": [
+        {
+          "class": "person",
+          "class_id": 0,
+          "confidence": 0.897,
+          "bbox": {
+            "x1": 1,
+            "y1": 0,
+            "x2": 393,
+            "y2": 420
+          }
+        }
+      ],
+      "persons_count": 1,
+      "vehicles_count": 0
+    }
+  },
+  {
+    "timestamp": "2026-02-22T10:23:12.151858",
+    "severity": "medium",
+    "description": "\ud83d\udc64 Person detected by camera",
+    "source": "camera",
+    "event_type": "detection",
+    "confidence": 0.897,
+    "metadata": {
+      "camera_index": 0,
+      "threat_level": "medium",
+      "detections": [
+        {
+          "class": "person",
+          "class_id": 0,
+          "confidence": 0.897,
+          "bbox": {
+            "x1": 1,
+            "y1": 0,
+            "x2": 393,
+            "y2": 420
+          }
+        }
+      ],
+      "persons_count": 1,
+      "vehicles_count": 0
+    }
+  },
+  {
+    "timestamp": "2026-02-22T10:24:21.130510",
+    "severity": "medium",
+    "description": "\ud83d\udc64 Person detected by camera",
+    "source": "camera",
+    "event_type": "detection",
+    "confidence": 0.897,
+    "metadata": {
+      "camera_index": 0,
+      "threat_level": "medium",
+      "detections": [
+        {
+          "class": "person",
+          "class_id": 0,
+          "confidence": 0.897,
+          "bbox": {
+            "x1": 1,
+            "y1": 0,
+            "x2": 393,
+            "y2": 420
+          }
+        }
+      ],
+      "persons_count": 1,
+      "vehicles_count": 0
+    }
+  },
+  {
+    "timestamp": "2026-02-22T10:25:27.759811",
+    "severity": "medium",
+    "description": "\ud83d\udc64 Person detected by camera",
+    "source": "camera",
+    "event_type": "detection",
+    "confidence": 0.897,
+    "metadata": {
+      "camera_index": 0,
+      "threat_level": "medium",
+      "detections": [
+        {
+          "class": "person",
+          "class_id": 0,
+          "confidence": 0.897,
+          "bbox": {
+            "x1": 1,
+            "y1": 0,
+            "x2": 393,
+            "y2": 420
+          }
+        }
+      ],
+      "persons_count": 1,
+      "vehicles_count": 0
+    }
+  },
+  {
+    "timestamp": "2026-02-22T10:26:35.032118",
+    "severity": "medium",
+    "description": "\ud83d\udc64 Person detected by camera",
+    "source": "camera",
+    "event_type": "detection",
+    "confidence": 0.897,
+    "metadata": {
+      "camera_index": 0,
+      "threat_level": "medium",
+      "detections": [
+        {
+          "class": "person",
+          "class_id": 0,
+          "confidence": 0.897,
+          "bbox": {
+            "x1": 1,
+            "y1": 0,
+            "x2": 393,
+            "y2": 420
+          }
+        }
+      ],
+      "persons_count": 1,
+      "vehicles_count": 0
+    }
+  },
+  {
+    "timestamp": "2026-02-22T10:27:41.754769",
+    "severity": "medium",
+    "description": "\ud83d\udc64 Person detected by camera",
+    "source": "camera",
+    "event_type": "detection",
+    "confidence": 0.897,
+    "metadata": {
+      "camera_index": 0,
+      "threat_level": "medium",
+      "detections": [
+        {
+          "class": "person",
+          "class_id": 0,
+          "confidence": 0.897,
+          "bbox": {
+            "x1": 1,
+            "y1": 0,
+            "x2": 393,
+            "y2": 420
+          }
+        }
+      ],
+      "persons_count": 1,
+      "vehicles_count": 0
+    }
+  },
+  {
+    "timestamp": "2026-02-22T10:28:49.102699",
+    "severity": "medium",
+    "description": "\ud83d\udc64 Person detected by camera",
+    "source": "camera",
+    "event_type": "detection",
+    "confidence": 0.897,
+    "metadata": {
+      "camera_index": 0,
+      "threat_level": "medium",
+      "detections": [
+        {
+          "class": "person",
+          "class_id": 0,
+          "confidence": 0.897,
+          "bbox": {
+            "x1": 1,
+            "y1": 0,
+            "x2": 393,
+            "y2": 420
+          }
+        }
+      ],
+      "persons_count": 1,
+      "vehicles_count": 0
+    }
   }
 ]

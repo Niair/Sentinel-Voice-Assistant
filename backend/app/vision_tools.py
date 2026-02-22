@@ -96,18 +96,15 @@ async def analyze_frame_for_threats(frame_base64: str = None, frame=None) -> str
         if not image_base64:
             return "No frame provided for analysis"
 
-        prompt = """Analyze this security camera image for potential threats.
+        prompt = """Quick security threat analysis. Be BRIEF.
 
-Look for:
-1. WEAPONS: knives, guns, baseball bats, sharp objects, blunt weapons
-2. THREATENING BEHAVIOR: aggressive postures, raised fists, chasing
-3. SUSPICIOUS OBJECTS: masks, gloves (worn by non-workers), crowbars
-4. PEOPLE: count and note their positions
+**Threat Level:** [NONE/LOW/MEDIUM/HIGH]
+**People:** [count]
+**Weapons:** [yes/no - type if yes]
+**Suspicious:** [yes/no - what]
+**Action:** [recommended action if threat]
 
-Provide a brief threat assessment:
-- Threat level: NONE/LOW/MEDIUM/HIGH
-- What you see
-- Recommended action if any threat detected"""
+Rules: Max 40 words, no repetition"""
 
         result = await _analyze_image(image_base64, prompt)
         return result
@@ -139,14 +136,7 @@ async def describe_scene(frame_base64: str = None, frame=None) -> str:
         if not image_base64:
             return "No frame provided for analysis"
 
-        prompt = """Describe this camera image in 2-3 sentences.
-
-Include:
-- How many people (if any) and what they appear to be doing
-- Notable objects or vehicles
-- Overall scene context (indoor/outdoor)
-
-Be factual and concise."""
+        prompt = """Describe this image in 2 sentences max. Include: people count, activity, setting. Be factual, no repetition."""
 
         result = await _analyze_image(image_base64, prompt)
         return result
@@ -178,19 +168,12 @@ async def analyze_outfit(frame_base64: str = None, frame=None) -> str:
         if not image_base64:
             return "No frame provided for analysis"
 
-        prompt = """Analyze this person's outfit and provide fashion advice.
+        prompt = """Analyze outfit briefly. Format:
+**Outfit:** [clothing items and colors]
+**Style:** [casual/formal/etc]
+**Rating:** [1-10 with brief reason]
 
-Consider:
-1. Color coordination
-2. Style consistency
-3. Overall presentation
-
-Be friendly and constructive!
-
-Format:
-**Current Outfit:** [Describe what they're wearing]
-**Style Assessment:** [Your thoughts]
-**Overall:** [1-2 sentence summary]"""
+Max 30 words, no repetition."""
 
         result = await _analyze_image(image_base64, prompt)
         return result
@@ -222,14 +205,7 @@ async def count_people_in_frame(frame_base64: str = None, frame=None) -> str:
         if not image_base64:
             return "No frame provided for analysis"
 
-        prompt = """Count the people in this image.
-
-Respond with:
-- Total count
-- Where each person is (left/center/right)
-- What each person appears to be doing
-
-If no people, say "No people detected"."""
+        prompt = """Count people. Format: "X people: [position and activity for each]". If none, say "No people". Max 20 words."""
 
         result = await _analyze_image(image_base64, prompt)
         return result
@@ -262,17 +238,18 @@ async def understand_scene(frame_base64: str = None, frame=None) -> str:
         if not image_base64:
             return "No frame provided for analysis"
 
-        prompt = """Analyze this camera image comprehensively.
+        prompt = """Analyze this camera image. Provide a BRIEF response in this exact format:
 
-Provide:
-1. **Scene Type:** Indoor/Outdoor and location type
-2. **People:** Count and what they're doing
-3. **Objects:** Notable objects visible
-4. **Activities:** What's happening
-5. **Safety:** Is this scene safe or concerning?
-6. **Summary:** One sentence summary
+**Scene:** [Indoor/Outdoor - location]
+**People:** [count and brief activity]
+**Objects:** [notable items only]
+**Safety:** [Safe/Concerning - reason]
+**Summary:** [one sentence]
 
-Be thorough but concise."""
+Rules:
+- Be concise, no repetition
+- Max 50 words total
+- No detailed descriptions unless asked"""
 
         result = await _analyze_image(image_base64, prompt)
         return result
@@ -304,14 +281,7 @@ async def detect_activity(frame_base64: str = None, frame=None) -> str:
         if not image_base64:
             return "No frame provided for analysis"
 
-        prompt = """What are the people in this image doing?
-
-Classify as:
-- NORMAL: everyday activities (walking, sitting, talking)
-- SUSPICIOUS: concerning behavior (looking around nervously, trying handles)
-- AGGRESSIVE: threatening behavior
-
-Provide a brief description."""
+        prompt = """Classify activity: NORMAL/SUSPICIOUS/AGGRESSIVE. Describe briefly in one sentence. Max 20 words."""
 
         result = await _analyze_image(image_base64, prompt)
         return result
@@ -343,15 +313,12 @@ async def detect_emotions(frame_base64: str = None, frame=None) -> str:
         if not image_base64:
             return "No frame provided for analysis"
 
-        prompt = """Analyze the emotional state of people in this image.
+        prompt = """Detect emotional state. Format:
+**Mood:** [primary emotion]
+**Signs:** [facial/body indicators]
+**Energy:** [high/medium/low]
 
-Look for:
-1. Primary emotion: happy, sad, stressed, tired, neutral
-2. Facial expressions
-3. Body language
-4. Overall mood
-
-Be empathetic and descriptive."""
+Max 25 words, be empathetic."""
 
         result = await _analyze_image(image_base64, prompt)
         return result
@@ -383,17 +350,18 @@ async def analyze_person(frame_base64: str = None, frame=None) -> str:
         if not image_base64:
             return "No frame provided for analysis"
 
-        prompt = """Provide a comprehensive analysis of the person in this image.
+        prompt = """Analyze the person in this image. Be BRIEF and direct.
 
-Analyze:
-1. **Appearance:** Clothing, style, colors, grooming
-2. **Emotional State:** Mood, expressions, energy level
-3. **Context:** What they're doing, where they are
-4. **Overall Impression:** How they present themselves
+**Appearance:** [clothing, colors, style in one line]
+**Mood:** [emotional state, energy level]
+**Activity:** [what they are doing]
+**Verdict:** [one sentence compliment]
 
-Be observant, honest, and kind. If no person is visible, say so.
-
-End with a genuine compliment."""
+Rules:
+- Max 60 words total
+- No repetition
+- End with a genuine compliment
+- If no person visible, say No person detected"""
 
         result = await _analyze_image(image_base64, prompt)
         return result
