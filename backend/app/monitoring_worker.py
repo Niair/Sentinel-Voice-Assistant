@@ -699,7 +699,7 @@ class MonitoringWorker:
 
     async def _analyze_scene_with_gemini(self, frame) -> str:
         """
-        Use Gemini Vision to analyze the current scene for threats and context.
+        Use Helper Agent (Qwen 3.5) to analyze scene and verify detections.
 
         This is called when persons are detected by YOLO, but rate-limited
         to avoid excessive API calls (once every 30 seconds max).
@@ -712,37 +712,85 @@ class MonitoringWorker:
         """
         try:
             from app.vision_tools import analyze_frame_for_threats, describe_scene
+            from app.agents.helper_agent import get_helper_agent, ThreatCategory
+            from app.agents.notification_tool import (
+                generate_notification,
+                send_alert_email,
+                get_session_tracker,
+            )
             import base64
-
-            # Encode frame to base64
-            import cv2
+            import os
 
             _, buffer = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
             frame_base64 = base64.b64encode(bytes(buffer)).decode("utf-8")
 
-            # First, check for threats
             threat_result = await analyze_frame_for_threats.ainvoke(
                 {"frame_base64": frame_base64}
             )
 
-            # If threat detected, use that as the description
-            if "THREAT DETECTED" in threat_result:
-                self._last_threat_assessment = threat_result
-                logger.warning(
-                    f"[CAMERA-VISION] Threat detected: {threat_result[:100]}"
+            helper = get_helper_agent()
+            session_tracker = get_session_tracker()
+
+            category, verified_result = await helper.verify_security_output(
+                {"raw_analysis": threat_result}, frame_base64
+            )
+
+            should_notify, reason = session_tracker.should_notify(verified_result)
+
+            if category == ThreatCategory.ALERT:
+                self._last_threat_assessment = verified_result.get(
+                    "description", threat_result
                 )
-                return threat_result
+                logger.warning(
+                    f"[CAMERA-HELPER] ALERT detected: {self._last_threat_assessment[:100]}"
+                )
 
-            # Otherwise, get a scene description
-            scene_result = await describe_scene.ainvoke({"frame_base64": frame_base64})
-            self._last_scene_description = scene_result
+                if helper.should_send_email(category, verified_result):
+                    user_email = os.getenv(
+                        "USER_ALERT_EMAIL", os.getenv("GMAIL_USER", "")
+                    )
+                    if user_email:
+                        from app.agents.notification_tool import format_email_report
 
-            logger.info(f"[CAMERA-VISION] Scene: {scene_result[:80]}...")
-            return scene_result
+                        subject, body = format_email_report(
+                            verified_result, frame_base64, category
+                        )
+                        await send_alert_email(
+                            to_email=user_email,
+                            subject=subject,
+                            body=body,
+                            image_base64=frame_base64,
+                        )
+                        logger.info(f"[CAMERA-HELPER] Alert email sent to {user_email}")
+
+                notification = generate_notification(verified_result, category)
+                await alert_ws_manager.broadcast_alert(notification)
+                session_tracker.record_notification()
+
+                return f"🚨 ALERT: {verified_result.get('description', threat_result)}"
+
+            elif category == ThreatCategory.CAUTION and should_notify:
+                logger.info(
+                    f"[CAMERA-HELPER] CAUTION detected ({reason}): {verified_result.get('description', '')[:100]}"
+                )
+                notification = generate_notification(verified_result, category)
+                await alert_ws_manager.broadcast_alert(notification)
+                session_tracker.record_notification()
+
+                return f"⚠️ CAUTION: {verified_result.get('description', threat_result)}"
+
+            elif category == ThreatCategory.NORMAL:
+                scene_result = await describe_scene.ainvoke(
+                    {"frame_base64": frame_base64}
+                )
+                self._last_scene_description = scene_result
+                logger.info(f"[CAMERA-VISION] Scene: {scene_result[:80]}...")
+                return scene_result
+
+            return threat_result
 
         except Exception as e:
-            logger.error(f"[CAMERA-VISION] Gemini analysis failed: {e}")
-            # Don't let Gemini failures break the monitoring
+            logger.error(f"[CAMERA-HELPER] Analysis failed: {e}")
             return ""
 
     def get_status(self) -> dict:

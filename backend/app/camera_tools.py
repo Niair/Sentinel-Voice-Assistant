@@ -5,12 +5,15 @@ Allows AI to query current camera status and recent detections
 
 import asyncio
 import base64
+import logging
 from typing import Dict, Any, Optional
 from datetime import datetime, timedelta
 from langchain_core.tools import tool
 from app.alert_history import alert_history
 from app.monitoring_worker import MonitoringWorker
 from app.detection import detector
+
+logger = logging.getLogger(__name__)
 
 _last_captured_frame = None
 _last_frame_time = None
@@ -340,7 +343,8 @@ async def how_do_i_look() -> str:
     if frame_base64 is None:
         return "No frame available. Camera may not be active yet. Please stand in front of the camera."
 
-    return await analyze_person.ainvoke({"frame_base64": frame_base64})
+    result = await analyze_person.ainvoke({"frame_base64": frame_base64})
+    return result
 
 
 @tool
@@ -364,7 +368,8 @@ async def detect_emotional_state() -> str:
     if frame_base64 is None:
         return "No frame available. Camera may not be active yet. Please stand in front of the camera."
 
-    return await detect_emotions.ainvoke({"frame_base64": frame_base64})
+    result = await detect_emotions.ainvoke({"frame_base64": frame_base64})
+    return result
 
 
 @tool

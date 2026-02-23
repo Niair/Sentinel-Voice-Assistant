@@ -1,6 +1,12 @@
 """
 Vision Tools using NVIDIA NIM API via LangChain for cloud-based vision analysis.
 No local GPU required - uses cloud inference with LangChain compatibility.
+
+Enhanced with Helper Agent for:
+- Verification of vision output
+- Deduplication of text
+- Improved emotion detection
+- User-friendly formatting
 """
 
 import os
@@ -16,6 +22,8 @@ logger = logging.getLogger(__name__)
 
 NVIDIA_API_KEY = os.getenv("NVEDIAKIMIK2_API_KEY", "")
 VISION_MODEL = "meta/llama-3.2-11b-vision-instruct"
+
+HELPER_ENABLED = os.getenv("HELPER_AGENT_ENABLED", "true").lower() == "true"
 
 _vision_llm = None
 
@@ -313,15 +321,46 @@ async def detect_emotions(frame_base64: str = None, frame=None) -> str:
         if not image_base64:
             return "No frame provided for analysis"
 
-        prompt = """Detect emotional state. Format:
-**Mood:** [primary emotion]
-**Signs:** [facial/body indicators]
+        prompt = """Detect YOUR emotional state (you are the user in this image). Format:
+**Mood:** [your primary emotion]
+**Signs:** [your facial/body indicators]
 **Energy:** [high/medium/low]
 
-Max 25 words, be empathetic."""
+IMPORTANT: Address the user directly as "you" - NOT "this person" or "the person".
 
-        result = await _analyze_image(image_base64, prompt)
-        return result
+Max 25 words, be empathetic and use "you/your"."""
+
+        raw_result = await _analyze_image(image_base64, prompt)
+
+        logger.info(f"[VISION] NVIDIA raw result: {raw_result[:200]}...")
+
+        if HELPER_ENABLED:
+            try:
+                from app.agents.helper_agent import get_helper_agent, QueryType
+
+                helper = get_helper_agent()
+                verified = await helper.verify_and_format(
+                    raw_output=raw_result,
+                    image_base64=image_base64,
+                    query_type=QueryType.EMOTION,
+                )
+
+                logger.info(f"[VISION] Helper Agent success: {verified.get('success')}")
+                logger.info(
+                    f"[VISION] Helper Agent response: {verified.get('formatted_response', 'N/A')[:200]}..."
+                )
+
+                if verified.get("success"):
+                    return verified.get("formatted_response", raw_result)
+                else:
+                    return raw_result
+            except Exception as helper_error:
+                logger.warning(
+                    f"Helper Agent failed for emotions, using raw result: {helper_error}"
+                )
+                return raw_result
+
+        return raw_result
 
     except Exception as e:
         logger.error(f"Emotion detection error: {e}")
@@ -350,21 +389,54 @@ async def analyze_person(frame_base64: str = None, frame=None) -> str:
         if not image_base64:
             return "No frame provided for analysis"
 
-        prompt = """Analyze the person in this image. Be BRIEF and direct.
+        prompt = """Analyze the person in this image (this is the user asking). Be BRIEF and direct.
 
-**Appearance:** [clothing, colors, style in one line]
-**Mood:** [emotional state, energy level]
-**Activity:** [what they are doing]
+**Appearance:** [your clothing, colors, style in one line]
+**Mood:** [your emotional state, energy level]
+**Activity:** [what you are doing]
 **Verdict:** [one sentence compliment]
+
+IMPORTANT: Always address the user directly as "you" - NOT "this person" or "the person".
 
 Rules:
 - Max 60 words total
 - No repetition
+- Use "you" and "your" - the person in the image IS the user
 - End with a genuine compliment
-- If no person visible, say No person detected"""
+- If no person visible, say "No person detected in frame"
+"""
 
-        result = await _analyze_image(image_base64, prompt)
-        return result
+        raw_result = await _analyze_image(image_base64, prompt)
+
+        logger.info(f"[VISION] analyze_person NVIDIA raw result: {raw_result[:200]}...")
+
+        if HELPER_ENABLED:
+            try:
+                from app.agents.helper_agent import get_helper_agent, QueryType
+
+                helper = get_helper_agent()
+                verified = await helper.verify_and_format(
+                    raw_output=raw_result,
+                    image_base64=image_base64,
+                    query_type=QueryType.APPEARANCE,
+                )
+
+                logger.info(
+                    f"[VISION] analyze_person Helper Agent success: {verified.get('success')}"
+                )
+                logger.info(
+                    f"[VISION] analyze_person Helper Agent response: {verified.get('formatted_response', 'N/A')[:200]}..."
+                )
+
+                if verified.get("success"):
+                    return verified.get("formatted_response", raw_result)
+                else:
+                    return raw_result
+            except Exception as helper_error:
+                logger.warning(f"Helper Agent failed, using raw result: {helper_error}")
+                return raw_result
+
+        return raw_result
 
     except Exception as e:
         logger.error(f"Person analysis error: {e}")

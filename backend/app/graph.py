@@ -3,7 +3,7 @@ import json
 from urllib.parse import urlparse, urlunparse
 import contextvars
 from typing import TypedDict, Annotated, Optional, List, Dict
-from langchain_groq import ChatGroq
+from langchain_ollama import ChatOllama
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_community.document_loaders import PyMuPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -554,21 +554,23 @@ async def agent(state: ChatState, config: RunnableConfig, store: BaseStore):
         current_time=current_time_str,
     )
 
-    # Determine which model to use
-    selected_model = config["configurable"].get("model", "llama-3.3-70b-versatile")
+    selected_model = config["configurable"].get("model", "glm-5:cloud")
 
     model_mapping = {
-        "llama-3.3-70b-versatile": "llama-3.3-70b-versatile",
-        "grok-4.1-fast": "llama-3.1-70b-versatile",
+        "glm-5:cloud": "glm-5:cloud",
+        "qwen3-coder:480b-cloud": "qwen3-coder:480b-cloud",
+        "qwen3.5:cloud": "qwen3.5:cloud",
     }
 
-    groq_model = model_mapping.get(selected_model, "llama-3.3-70b-versatile")
-    print(f"🧠 Using model: {groq_model}")
+    ollama_model = model_mapping.get(selected_model, "glm-5:cloud")
+    print(f"🧠 Using Ollama model: {ollama_model}")
 
-    # ✅ FIX: Lower temperature and add max retries to prevent loops
-    model = ChatGroq(model=groq_model, temperature=0.1, timeout=30.0, max_retries=2)
+    model = ChatOllama(
+        model=ollama_model,
+        temperature=0.1,
+    )
     tool_schemas = [convert_to_openai_tool(tool) for tool in all_tools]
-    llm_with_tools = model.bind_tools(tool_schemas, tool_choice="auto")
+    llm_with_tools = model.bind_tools(tool_schemas)
 
     # Filter and validate messages
     validated_messages = []
@@ -716,12 +718,12 @@ async def agent(state: ChatState, config: RunnableConfig, store: BaseStore):
             except Exception as retry_error:
                 print(f"❌ Manual tool call creation failed: {retry_error}")
 
-        # ✅ FIX: If Groq rejects function calling, retry without tools
         if "Failed to call a function" in error_msg or "function" in error_msg.lower():
             print(f"⚠️ Function calling failed, retrying without tools...")
             try:
-                model_no_tools = ChatGroq(
-                    model=groq_model, temperature=0.1, timeout=30.0
+                model_no_tools = ChatOllama(
+                    model=ollama_model,
+                    temperature=0.1,
                 )
                 response = await model_no_tools.ainvoke(messages)
                 print(f"✅ Retry successful without tools")
