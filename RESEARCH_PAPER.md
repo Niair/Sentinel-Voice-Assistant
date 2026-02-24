@@ -28,8 +28,9 @@ Research on AI assistants with grounded memory is also growing. Ocker et al. [13
 III. System Architecture
 Sentinel uses a layered, modular framework that integrates conversational intelligence with continuous visual monitoring. The key innovation is the event-driven design that lets multiple agents work independently while staying connected.
 
-<INSERT ARCHITECTURE DIAGRAM HERE>
-<> Figure 1. Multi-agent event-driven architecture of Sentinel.
+<> Figure 1. Overall system architecture showing User Interface → Backend → Agents → Data Stores.
+<> Figure 2. LangGraph workflow showing the conversational orchestration with agent nodes, tool nodes, and conditional edges.
+<> Figure 3. Vision monitoring pipeline showing continuous camera detection through YOLOv8 to alert processing.
 
 The architecture has four main parts:
 
@@ -77,8 +78,8 @@ C. Real-Time Vision Monitoring
 In practical testing at a residential setting, the system successfully detected wildlife (monkeys) approaching the house and generated alerts within seconds. This demonstrated that the event-driven architecture can provide immediate feedback for home security scenarios. The YOLOv8-based detection correctly identified the animal, and the alert was delivered to the user interface promptly.
 
 <INSERT RESULTS SCREENSHOTS HERE>
-<> Figure 2. Alert notification showing detected activity.
-<> Figure 3. Chat interface with conversational interaction.
+<> Figure 4. Alert notification showing detected activity.
+<> Figure 5. Chat interface with conversational interaction.
 
 VI. Conclusion
 This paper presented Sentinel, an event-driven multi-agent architecture for AI-powered home security. The system combines LangGraph-based conversational AI with continuous vision monitoring using YOLOv8. The key contribution is the event-driven design that allows multiple agents to work independently while communicating through asynchronous events. This ensures that monitoring continues even when the user is not actively chatting, and that conversational responses are not blocked by vision processing. Future work will include comprehensive evaluation of detection accuracy, false positive rates, and alert latency with extended hardware testing.
