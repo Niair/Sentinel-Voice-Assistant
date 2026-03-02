@@ -25,6 +25,7 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+_assets/_imp
 .opencode
 .opencode.json
 AGENTS.md
